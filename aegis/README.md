@@ -36,7 +36,11 @@ the evidence that it behaved correctly are the same system.
 | `verification` | determinism probing, drift detection, fidelity gating | implemented |
 | `hr` | workflow definitions for hiring, onboarding, retention, offboarding | implemented |
 | `attrition` | flight-risk pipeline: feature engineering, model, risk banding, drivers | implemented |
-| `api` | HTTP surface over the whole platform, tenant-scoped | implemented |
+| `api` | HTTP surface over the whole platform, authenticated and tenant-scoped | implemented |
+| `reasoning` | language-model layer: prompts, structured screening, response validation | implemented |
+| `persistence` | PostgreSQL storage for runs, ledger, policies, models and API keys | implemented |
+| `auth` | JWT tokens and hashed API keys carrying tenant and roles | implemented |
+| `integrations` | email and calendar tools an agent actually acts through | implemented |
 
 ## Governance is structural, not configurable
 
@@ -114,7 +118,11 @@ uv run ruff check .
 uv run mypy
 ```
 
-192 tests. Passes `mypy --strict` and `ruff` with zero findings.
+256 tests. Passes `mypy --strict` and `ruff` with zero findings.
+
+```bash
+docker compose up
+```
 
 ```bash
 uv run uvicorn aegis.api.app:app --reload
@@ -147,8 +155,28 @@ than forty rows is refused, as is training where every outcome is the same, beca
 fitted on either is not evidence. Scores carry the factors driving them, ranked, so a manager
 receives a reason rather than a number.
 
+## Reasoning
+
+The reasoning layer sits behind a `LanguageModel` interface with two implementations: a hosted
+model over an OpenAI-compatible API, and a deterministic local model used by default and in
+tests. Screening runs a candidate through anonymisation first, so the model never sees a name,
+a protected attribute or an institution, and the response is validated rather than trusted — a
+score outside `[0,1]`, an invented recommendation or malformed JSON is refused rather than
+passed downstream as a decision.
+
+Prompts refuse a non-zero temperature outright. A stylistic sampler makes the same candidate
+score differently on a rerun, which is precisely the failure the verification module exists to
+catch; allowing it here would mean shipping the defect and then measuring it.
+
+## Authentication and persistence
+
+Callers authenticate with a signed JWT carrying the tenant claim, or with an API key stored as
+a SHA-256 hash. A tenant header is not authentication and is refused. Runs, ledger entries,
+tenant policies, trained models and API keys live in PostgreSQL, so a restart loses nothing and
+the hash chain continues from its stored head rather than restarting at genesis.
+
 ## Not yet built
 
 Skill taxonomy and gap forecasting, internal mobility matching, workforce planning simulation,
-and aggregated sentiment analysis. Persistence is in-memory; runs, ledgers and models do not yet
-survive a restart.
+and aggregated sentiment analysis. Alembic is a dependency but migrations are not yet authored;
+schema creation is currently `create_all`.

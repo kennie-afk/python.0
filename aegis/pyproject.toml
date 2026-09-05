@@ -14,6 +14,13 @@ dependencies = [
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "pyjwt>=2.10",
+    "httpx>=0.28",
+]
+db = [
+    "sqlalchemy>=2.0",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
 ]
 ml = [
     "pandas>=2.2",

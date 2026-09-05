@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from typing import Annotated
+from collections.abc import Iterator, Sequence
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 from aegis.agents.runtime import AgentRuntime, ApprovalError
 from aegis.agents.tools import RecordingTool, ToolRegistry
@@ -28,6 +29,8 @@ from aegis.api.schemas import (
     RejectionRequest,
     RunView,
     ScoreRequest,
+    ScreeningView,
+    ScreenRequest,
     StartRunRequest,
     StepView,
     TrainRequest,
@@ -35,6 +38,7 @@ from aegis.api.schemas import (
 )
 from aegis.attrition.features import EmployeeSnapshot
 from aegis.attrition.model import AttritionModel, ModelError
+from aegis.auth.tokens import AuthError, Principal, TokenService, hash_api_key
 from aegis.bias.adverse_impact import (
     AdverseImpactError,
     GroupOutcome,
@@ -44,60 +48,147 @@ from aegis.governance.actions import ActionType
 from aegis.governance.gate import GovernanceGate
 from aegis.governance.policy import TenantPolicy
 from aegis.hr.workflows import CATALOGUE
-from aegis.ledger.record import DecisionLedger
+from aegis.integrations.calendar import CalendarTool, InMemoryCalendar
+from aegis.integrations.email import EmailTool, MockEmailTransport
+from aegis.ledger.record import DecisionLedger, LedgerEntry, make_entry
+from aegis.persistence.repositories import (
+    ApiKeyRepository,
+    LedgerRepository,
+    ModelRepository,
+    PolicyRepository,
+    RunRepository,
+)
+from aegis.persistence.session import Database
+from aegis.reasoning.deterministic import DeterministicModel
+from aegis.reasoning.provider import LanguageModel
+from aegis.reasoning.screening import CandidateScreener
 
 
 class Platform:
-    def __init__(self) -> None:
-        self.runs: dict[str, WorkflowRun] = {}
-        self.ledgers: dict[str, DecisionLedger] = {}
-        self.models: dict[str, AttritionModel] = {}
-        self.policies: dict[str, TenantPolicy] = {}
+    def __init__(self, database: Database | None = None, model: LanguageModel | None = None):
+        self.database = database or Database()
+        self.database.create_all()
         self.salt = os.environ.get("AEGIS_ANONYMISATION_SALT", "aegis-development-salt-value")
+        self.tokens = TokenService(
+            secret=os.environ.get(
+                "AEGIS_JWT_SECRET", "aegis-development-signing-secret-not-for-production"
+            )
+        )
+        self.model = model or DeterministicModel()
+        self.calendar = InMemoryCalendar()
+        self.email = MockEmailTransport()
 
-    def ledger(self, tenant: str) -> DecisionLedger:
-        return self.ledgers.setdefault(tenant, DecisionLedger())
+    def policy(self, session: Session, tenant: str) -> TenantPolicy:
+        stored = PolicyRepository(session).load(tenant)
+        return stored or TenantPolicy.conservative(tenant)
 
-    def policy(self, tenant: str) -> TenantPolicy:
-        return self.policies.setdefault(tenant, TenantPolicy.conservative(tenant))
-
-    def runtime(self, tenant: str) -> AgentRuntime:
+    def runtime(self, session: Session, tenant: str) -> AgentRuntime:
         tools = ToolRegistry()
-        tools.register(RecordingTool(frozenset(ActionType), output={"executed": True}))
+        tools.register(EmailTool(self.email))
+        tools.register(CalendarTool(self.calendar))
+        remaining = frozenset(ActionType) - tools.registered()
+        tools.register(RecordingTool(remaining, output={"executed": True}))
+
         return AgentRuntime(
-            gate=GovernanceGate(self.policy(tenant)),
+            gate=GovernanceGate(self.policy(session, tenant)),
             tools=tools,
-            ledger=self.ledger(tenant),
+            ledger=PersistentLedger(session, tenant),
         )
 
     def anonymizer(self) -> AnonymizationEngine:
         return AnonymizationEngine(salt=self.salt)
 
+    def screener(self) -> CandidateScreener:
+        return CandidateScreener(self.model, self.anonymizer())
 
-_platform = Platform()
+
+class PersistentLedger(DecisionLedger):
+    def __init__(self, session: Session, tenant: str) -> None:
+        super().__init__()
+        self._tenant = tenant
+        self._repository = LedgerRepository(session)
+        self._sequence, self._head = self._repository.head(tenant)
+
+    @property
+    def head_hash(self) -> str:
+        return self._head
+
+    def append(
+        self,
+        tenant_id: str,
+        workflow: str,
+        run_id: str,
+        step: str,
+        action_type: str,
+        subject_id: str,
+        agent: str,
+        outcome: str,
+        reasons: Sequence[str] = (),
+        approver: str | None = None,
+    ) -> LedgerEntry:
+        entry = make_entry(
+            sequence=self._sequence,
+            previous_hash=self._head,
+            tenant_id=self._tenant,
+            workflow=workflow,
+            run_id=run_id,
+            step=step,
+            action_type=action_type,
+            subject_id=subject_id,
+            agent=agent,
+            outcome=outcome,
+            reasons=reasons,
+            approver=approver,
+        )
+        self._repository.append(self._tenant, entry)
+        self._sequence += 1
+        self._head = entry.entry_hash
+        return entry
+
+
+_platform: Platform | None = None
 
 
 def get_platform() -> Iterator[Platform]:
+    global _platform
+    if _platform is None:
+        _platform = Platform()
     yield _platform
 
 
-def tenant_id(x_tenant_id: Annotated[str | None, Header()] = None) -> str:
-    if not x_tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-Tenant-Id header is required; every action is scoped to a tenant",
-        )
-    try:
-        UUID(x_tenant_id)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Tenant-Id must be a UUID",
-        ) from error
-    return x_tenant_id
+def principal(
+    platform: Annotated[Platform, Depends(get_platform)],
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
+) -> Principal:
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            return platform.tokens.verify(authorization[len("Bearer ") :].strip())
+        except AuthError as error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)
+            ) from error
+
+    if x_api_key:
+        with platform.database.session() as session:
+            row = ApiKeyRepository(session).resolve(hash_api_key(x_api_key))
+            if row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="api key is not valid"
+                )
+            return Principal(
+                tenant_id=row.tenant_id,
+                subject=f"key:{row.label}",
+                roles=frozenset(row.roles),
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="a bearer token or X-Api-Key is required; a tenant header is not authentication",
+    )
 
 
-TenantDep = Annotated[str, Depends(tenant_id)]
+PrincipalDep = Annotated[Principal, Depends(principal)]
 PlatformDep = Annotated[Platform, Depends(get_platform)]
 
 app = FastAPI(
@@ -178,16 +269,9 @@ def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
     )
 
 
-def _load(platform: Platform, tenant: str, run_id: str) -> WorkflowRun:
-    run = platform.runs.get(run_id)
-    if run is None or str(run.tenant_id) != tenant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
-    return run
-
-
 @app.post("/v1/runs", status_code=status.HTTP_201_CREATED)
 def start_run(
-    request: StartRunRequest, tenant: TenantDep, platform: PlatformDep
+    request: StartRunRequest, caller: PrincipalDep, platform: PlatformDep
 ) -> RunView:
     definition = CATALOGUE.get(request.workflow)
     if definition is None:
@@ -196,16 +280,38 @@ def start_run(
             detail=f"unknown workflow {request.workflow!r}",
         )
 
-    runtime = platform.runtime(tenant)
-    run = runtime.start(definition, UUID(tenant), request.subject_id, request.context)
-    runtime.advance(run)
-    platform.runs[str(run.run_id)] = run
-    return _view(run, runtime)
+    with platform.database.session() as session:
+        runtime = platform.runtime(session, caller.tenant_id)
+        run = runtime.start(
+            definition, UUID(caller.tenant_id), request.subject_id, request.context
+        )
+        runtime.advance(run)
+        RunRepository(session).save(run)
+        return _view(run, runtime)
 
 
 @app.get("/v1/runs/{run_id}")
-def get_run(run_id: str, tenant: TenantDep, platform: PlatformDep) -> RunView:
-    return _view(_load(platform, tenant, run_id), platform.runtime(tenant))
+def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView:
+    with platform.database.session() as session:
+        run = RunRepository(session).load(caller.tenant_id, run_id)
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
+        return _view(run, platform.runtime(session, caller.tenant_id))
+
+
+def _mutate_run(
+    platform: Platform, caller: Principal, run_id: str, operation: str, **kwargs: Any
+) -> RunView:
+    with platform.database.session() as session:
+        run = RunRepository(session).load(caller.tenant_id, run_id)
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
+
+        runtime = platform.runtime(session, caller.tenant_id)
+        handler: Any = getattr(runtime, operation)
+        handler(run, **kwargs)
+        RunRepository(session).save(run)
+        return _view(run, runtime)
 
 
 @app.post("/v1/runs/{run_id}/steps/{step_key}/approve")
@@ -213,13 +319,12 @@ def approve_step(
     run_id: str,
     step_key: str,
     request: ApprovalRequest,
-    tenant: TenantDep,
+    caller: PrincipalDep,
     platform: PlatformDep,
 ) -> RunView:
-    run = _load(platform, tenant, run_id)
-    runtime = platform.runtime(tenant)
-    runtime.approve(run, step_key, request.approver)
-    return _view(run, runtime)
+    return _mutate_run(
+        platform, caller, run_id, "approve", step_key=step_key, approver=request.approver
+    )
 
 
 @app.post("/v1/runs/{run_id}/steps/{step_key}/reject")
@@ -227,13 +332,18 @@ def reject_step(
     run_id: str,
     step_key: str,
     request: RejectionRequest,
-    tenant: TenantDep,
+    caller: PrincipalDep,
     platform: PlatformDep,
 ) -> RunView:
-    run = _load(platform, tenant, run_id)
-    runtime = platform.runtime(tenant)
-    runtime.reject(run, step_key, request.approver, request.reason)
-    return _view(run, runtime)
+    return _mutate_run(
+        platform,
+        caller,
+        run_id,
+        "reject",
+        step_key=step_key,
+        approver=request.approver,
+        reason=request.reason,
+    )
 
 
 @app.post("/v1/runs/{run_id}/steps/{step_key}/external")
@@ -241,18 +351,23 @@ def resolve_external(
     run_id: str,
     step_key: str,
     request: ExternalResultRequest,
-    tenant: TenantDep,
+    caller: PrincipalDep,
     platform: PlatformDep,
 ) -> RunView:
-    run = _load(platform, tenant, run_id)
-    runtime = platform.runtime(tenant)
-    runtime.resolve_external(run, step_key, request.result, request.succeeded)
-    return _view(run, runtime)
+    return _mutate_run(
+        platform,
+        caller,
+        run_id,
+        "resolve_external",
+        step_key=step_key,
+        result=request.result,
+        succeeded=request.succeeded,
+    )
 
 
 @app.post("/v1/anonymize")
 def anonymize(
-    request: AnonymizeRequest, tenant: TenantDep, platform: PlatformDep
+    request: AnonymizeRequest, caller: PrincipalDep, platform: PlatformDep
 ) -> AnonymizeResponse:
     try:
         result = platform.anonymizer().anonymize(request.record)
@@ -271,9 +386,31 @@ def anonymize(
     )
 
 
+@app.post("/v1/screen")
+def screen_candidate(
+    request: ScreenRequest, caller: PrincipalDep, platform: PlatformDep
+) -> ScreeningView:
+    try:
+        result = platform.screener().screen(request.record, request.requirement)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+        ) from error
+
+    return ScreeningView(
+        subject_key=result.subject_key,
+        score=round(result.score, 4),
+        recommendation=result.recommendation,
+        rationale=result.rationale,
+        signals_considered=list(result.signals_considered),
+        model=result.model,
+        prompt_fingerprint=result.prompt_fingerprint,
+    )
+
+
 @app.post("/v1/bias/adverse-impact")
 def adverse_impact(
-    request: AdverseImpactRequest, tenant: TenantDep
+    request: AdverseImpactRequest, caller: PrincipalDep
 ) -> AdverseImpactResponse:
     report = four_fifths_test(
         [
@@ -322,7 +459,7 @@ def _snapshot(employee: EmployeeIn) -> EmployeeSnapshot:
 
 @app.post("/v1/attrition/train")
 def train_model(
-    request: TrainRequest, tenant: TenantDep, platform: PlatformDep
+    request: TrainRequest, caller: PrincipalDep, platform: PlatformDep
 ) -> TrainResponse:
     if len(request.employees) != len(request.left):
         raise HTTPException(
@@ -332,7 +469,11 @@ def train_model(
 
     model = AttritionModel(request.algorithm)
     report = model.train([_snapshot(item) for item in request.employees], request.left)
-    platform.models[tenant] = model
+
+    with platform.database.session() as session:
+        ModelRepository(session).save(
+            caller.tenant_id, model, report.rows, report.positives, report.feature_importance
+        )
 
     return TrainResponse(
         rows=report.rows,
@@ -345,9 +486,11 @@ def train_model(
 
 @app.post("/v1/attrition/score")
 def score_employees(
-    request: ScoreRequest, tenant: TenantDep, platform: PlatformDep
+    request: ScoreRequest, caller: PrincipalDep, platform: PlatformDep
 ) -> list[AttritionScoreView]:
-    model = platform.models.get(tenant)
+    with platform.database.session() as session:
+        model = ModelRepository(session).load(caller.tenant_id)
+
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -375,7 +518,10 @@ def score_employees(
 
 
 @app.get("/v1/ledger")
-def read_ledger(tenant: TenantDep, platform: PlatformDep) -> list[LedgerEntryView]:
+def read_ledger(caller: PrincipalDep, platform: PlatformDep) -> list[LedgerEntryView]:
+    with platform.database.session() as session:
+        entries = LedgerRepository(session).entries(caller.tenant_id)
+
     return [
         LedgerEntryView(
             sequence=entry.sequence,
@@ -388,13 +534,15 @@ def read_ledger(tenant: TenantDep, platform: PlatformDep) -> list[LedgerEntryVie
             approver=entry.approver,
             recorded_at=entry.recorded_at.isoformat(),
         )
-        for entry in platform.ledger(tenant).entries
+        for entry in entries
     ]
 
 
 @app.get("/v1/ledger/verify")
-def verify_ledger(tenant: TenantDep, platform: PlatformDep) -> IntegrityView:
-    report = platform.ledger(tenant).verify()
+def verify_ledger(caller: PrincipalDep, platform: PlatformDep) -> IntegrityView:
+    with platform.database.session() as session:
+        report = LedgerRepository(session).verify(caller.tenant_id)
+
     return IntegrityView(
         intact=report.intact,
         entries_checked=report.entries_checked,

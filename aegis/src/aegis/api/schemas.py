@@ -152,6 +152,21 @@ class IntegrityView(BaseModel):
     reason: str | None
 
 
+class ScreenRequest(BaseModel):
+    record: dict[str, Any]
+    requirement: str = Field(min_length=1, max_length=500)
+
+
+class ScreeningView(BaseModel):
+    subject_key: str
+    score: float
+    recommendation: str
+    rationale: str
+    signals_considered: list[str]
+    model: str
+    prompt_fingerprint: str
+
+
 class ProblemDetail(BaseModel):
     title: str
     detail: str

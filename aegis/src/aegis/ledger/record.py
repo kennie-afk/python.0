@@ -49,6 +49,59 @@ def _canonical(
     return "".join(f"{len(part)}:{part}" for part in parts)
 
 
+def make_entry(
+    sequence: int,
+    previous_hash: str,
+    tenant_id: str,
+    workflow: str,
+    run_id: str,
+    step: str,
+    action_type: str,
+    subject_id: str,
+    agent: str,
+    outcome: str,
+    reasons: Sequence[str] = (),
+    approver: str | None = None,
+) -> LedgerEntry:
+    recorded_at = datetime.now(UTC)
+    reason_tuple = tuple(reasons)
+
+    canonical = _canonical(
+        sequence,
+        previous_hash,
+        [
+            tenant_id,
+            workflow,
+            run_id,
+            step,
+            action_type,
+            subject_id,
+            agent,
+            outcome,
+            "|".join(reason_tuple),
+            approver,
+        ],
+        recorded_at,
+    )
+
+    return LedgerEntry(
+        sequence=sequence,
+        tenant_id=tenant_id,
+        workflow=workflow,
+        run_id=run_id,
+        step=step,
+        action_type=action_type,
+        subject_id=subject_id,
+        agent=agent,
+        outcome=outcome,
+        reasons=reason_tuple,
+        approver=approver,
+        recorded_at=recorded_at,
+        previous_hash=previous_hash,
+        entry_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    )
+
+
 class DecisionLedger:
     def __init__(self) -> None:
         self._entries: list[LedgerEntry] = []
@@ -77,31 +130,9 @@ class DecisionLedger:
         reasons: Sequence[str] = (),
         approver: str | None = None,
     ) -> LedgerEntry:
-        sequence = len(self._entries)
-        previous_hash = self.head_hash
-        recorded_at = datetime.now(UTC)
-        reason_tuple = tuple(reasons)
-
-        canonical = _canonical(
-            sequence,
-            previous_hash,
-            [
-                tenant_id,
-                workflow,
-                run_id,
-                step,
-                action_type,
-                subject_id,
-                agent,
-                outcome,
-                "|".join(reason_tuple),
-                approver,
-            ],
-            recorded_at,
-        )
-
-        entry = LedgerEntry(
-            sequence=sequence,
+        entry = make_entry(
+            sequence=len(self._entries),
+            previous_hash=self.head_hash,
             tenant_id=tenant_id,
             workflow=workflow,
             run_id=run_id,
@@ -110,11 +141,8 @@ class DecisionLedger:
             subject_id=subject_id,
             agent=agent,
             outcome=outcome,
-            reasons=reason_tuple,
+            reasons=reasons,
             approver=approver,
-            recorded_at=recorded_at,
-            previous_hash=previous_hash,
-            entry_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         )
         self._entries.append(entry)
         return entry
