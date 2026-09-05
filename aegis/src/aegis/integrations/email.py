@@ -5,6 +5,7 @@ import re
 import smtplib
 from dataclasses import dataclass, field
 from email.message import EmailMessage
+from typing import Protocol
 
 from aegis.agents.tools import ToolResult
 from aegis.governance.actions import ActionType, ProposedAction
@@ -21,6 +22,10 @@ class SentEmail:
     to: str
     subject: str
     body: str
+
+
+class EmailTransport(Protocol):
+    def deliver(self, message: SentEmail) -> str: ...
 
 
 @dataclass
@@ -87,7 +92,7 @@ class SmtpEmailTransport:
 
 
 class EmailTool:
-    def __init__(self, transport: MockEmailTransport | SmtpEmailTransport) -> None:
+    def __init__(self, transport: EmailTransport) -> None:
         self._transport = transport
 
     def handles(self) -> frozenset[ActionType]:

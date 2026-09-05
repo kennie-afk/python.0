@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator, Sequence
 from typing import Annotated, Any
@@ -60,7 +61,13 @@ from aegis.governance.gate import GovernanceGate
 from aegis.governance.policy import TenantPolicy
 from aegis.hr.workflows import CATALOGUE
 from aegis.integrations.calendar import CalendarTool, InMemoryCalendar
-from aegis.integrations.email import EmailTool, MockEmailTransport
+from aegis.integrations.email import (
+    EmailError,
+    EmailTool,
+    EmailTransport,
+    MockEmailTransport,
+    SmtpEmailTransport,
+)
 from aegis.ledger.record import DecisionLedger, LedgerEntry, make_entry
 from aegis.persistence.repositories import (
     ApiKeyRepository,
@@ -71,8 +78,27 @@ from aegis.persistence.repositories import (
 )
 from aegis.persistence.session import Database
 from aegis.reasoning.deterministic import DeterministicModel
-from aegis.reasoning.provider import LanguageModel
+from aegis.reasoning.http_model import HttpLanguageModel
+from aegis.reasoning.provider import LanguageModel, ReasoningError
 from aegis.reasoning.screening import CandidateScreener
+
+logger = logging.getLogger("aegis.platform")
+
+
+def _configured_model() -> LanguageModel:
+    try:
+        return HttpLanguageModel.from_environment()
+    except ReasoningError as reason:
+        logger.info("using the deterministic model: %s", reason)
+        return DeterministicModel()
+
+
+def _configured_email() -> EmailTransport:
+    try:
+        return SmtpEmailTransport.from_environment()
+    except EmailError as reason:
+        logger.info("using the mock email transport: %s", reason)
+        return MockEmailTransport()
 
 
 class Platform:
@@ -85,9 +111,17 @@ class Platform:
                 "AEGIS_JWT_SECRET", "aegis-development-signing-secret-not-for-production"
             )
         )
-        self.model = model or DeterministicModel()
+        self.model = model or _configured_model()
         self.calendar = InMemoryCalendar()
-        self.email = MockEmailTransport()
+        self.email = _configured_email()
+
+    @property
+    def delivery(self) -> dict[str, str]:
+        return {
+            "model": self.model.name,
+            "email": type(self.email).__name__,
+            "calendar": type(self.calendar).__name__,
+        }
 
     def policy(self, session: Session, tenant: str) -> TenantPolicy:
         stored = PolicyRepository(session).load(tenant)
@@ -282,6 +316,11 @@ async def adverse_impact_error_handler(_: object, error: AdverseImpactError) -> 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/v1/configuration")
+def configuration(caller: PrincipalDep, platform: PlatformDep) -> dict[str, str]:
+    return {"tenant_id": caller.tenant_id, **platform.delivery}
 
 
 @app.post("/v1/auth/token")

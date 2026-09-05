@@ -7,6 +7,7 @@ from aegis.integrations.calendar import (
 from aegis.integrations.email import (
     EmailError,
     EmailTool,
+    EmailTransport,
     MockEmailTransport,
     SentEmail,
     SmtpEmailTransport,
@@ -17,6 +18,7 @@ __all__ = [
     "CalendarTool",
     "EmailError",
     "EmailTool",
+    "EmailTransport",
     "InMemoryCalendar",
     "MockEmailTransport",
     "SentEmail",

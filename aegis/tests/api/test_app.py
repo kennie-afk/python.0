@@ -663,3 +663,47 @@ class TestConsoleEndpoints:
         assert body["trained"] is True
         assert body["rows"] == len(employees)
         assert body["feature_importance"]
+
+
+class TestDeliveryConfiguration:
+    def test_it_falls_back_to_safe_defaults_when_nothing_is_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("AEGIS_SMTP_HOST", "AEGIS_MODEL_API_KEY"):
+            monkeypatch.delenv(name, raising=False)
+
+        instance = Platform(database=Database("sqlite+pysqlite:///:memory:"))
+
+        assert instance.delivery["email"] == "MockEmailTransport"
+        assert instance.delivery["model"] == "aegis-deterministic-v1"
+
+    def test_setting_an_smtp_host_switches_to_real_delivery(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AEGIS_SMTP_HOST", "smtp.example.com")
+
+        instance = Platform(database=Database("sqlite+pysqlite:///:memory:"))
+
+        assert instance.delivery["email"] == "SmtpEmailTransport"
+
+    def test_setting_a_model_key_switches_to_the_hosted_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AEGIS_MODEL_API_KEY", "sk-not-a-real-key")
+        monkeypatch.setenv("AEGIS_MODEL_NAME", "gpt-4o-mini")
+
+        instance = Platform(database=Database("sqlite+pysqlite:///:memory:"))
+
+        assert instance.delivery["model"] == "gpt-4o-mini"
+
+    def test_the_configuration_endpoint_reports_what_is_wired(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        body = client.get("/v1/configuration", headers=auth).json()
+
+        assert body["tenant_id"] == TENANT
+        assert body["email"] == "MockEmailTransport"
+        assert body["calendar"] == "InMemoryCalendar"
+
+    def test_the_configuration_endpoint_needs_authentication(self, client: TestClient) -> None:
+        assert client.get("/v1/configuration").status_code == 401
