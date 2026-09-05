@@ -18,9 +18,9 @@ api = [
 ml = [
     "pandas>=2.2",
     "scikit-learn>=1.5",
-    "xgboost>=2.1",
 ]
 dev = [
+    "httpx>=0.28",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
@@ -52,3 +52,7 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 packages = ["aegis"]
+
+[[tool.mypy.overrides]]
+module = ["sklearn.*"]
+ignore_missing_imports = true

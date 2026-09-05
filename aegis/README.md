@@ -35,6 +35,8 @@ the evidence that it behaved correctly are the same system.
 | `bias` | four-fifths-rule adverse impact testing with statistical significance | implemented |
 | `verification` | determinism probing, drift detection, fidelity gating | implemented |
 | `hr` | workflow definitions for hiring, onboarding, retention, offboarding | implemented |
+| `attrition` | flight-risk pipeline: feature engineering, model, risk banding, drivers | implemented |
+| `api` | HTTP surface over the whole platform, tenant-scoped | implemented |
 
 ## Governance is structural, not configurable
 
@@ -112,10 +114,41 @@ uv run ruff check .
 uv run mypy
 ```
 
-136 tests. Passes `mypy --strict` and `ruff` with zero findings.
+ tests. Passes `mypy --strict` and `ruff` with zero findings.
+
+```bash
+uv run uvicorn aegis.api.app:app --reload
+```
+
+Thirteen endpoints covering workflow runs, approvals, external results, anonymisation, adverse
+impact testing, attrition training and scoring, and ledger inspection. Every request carries an
+`X-Tenant-Id`; a request without one is refused rather than defaulted, and one tenant cannot
+read another's runs, models or ledger.
+
+## Attrition
+
+The flight-risk pipeline follows ingestion, feature engineering, model scoring and action.
+Absolute salary never becomes a feature; what the model sees is position relative to band
+midpoint and to peer median, which is the signal that actually predicts leaving. Protected
+attributes are refused at the feature boundary, so a model cannot be trained on them by
+accident.
+
+```python
+model = AttritionModel("gradient_boosting")
+model.train(snapshots, left)
+
+score = model.score(snapshot)
+score.band              # RiskBand.HIGH
+score.top_drivers(3)    # months_since_promotion, above cohort
+```
+
+Gradient boosting, random forest and logistic regression are all supported. Training on fewer
+than forty rows is refused, as is training where every outcome is the same, because a model
+fitted on either is not evidence. Scores carry the factors driving them, ranked, so a manager
+receives a reason rather than a number.
 
 ## Not yet built
 
-Predictive attrition modelling, skill taxonomy and gap forecasting, internal mobility matching,
-workforce planning simulation, aggregated sentiment analysis, and the HTTP API. The workflow
-engine, governance, ledger, anonymisation, bias auditing and verification are complete.
+Skill taxonomy and gap forecasting, internal mobility matching, workforce planning simulation,
+and aggregated sentiment analysis. Persistence is in-memory; runs, ledgers and models do not yet
+survive a restart.
