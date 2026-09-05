@@ -1,4 +1,10 @@
-from aegis.agents.runtime import AgentRuntime, ApprovalError
+from aegis.agents.runtime import (
+    MAX_STEP_ATTEMPTS,
+    AgentRuntime,
+    ApprovalError,
+    MissingContextError,
+    RetryError,
+)
 from aegis.agents.tools import FailingTool, RecordingTool, Tool, ToolRegistry, ToolResult
 from aegis.agents.workflow import (
     RunStatus,
@@ -10,10 +16,13 @@ from aegis.agents.workflow import (
 )
 
 __all__ = [
+    "MAX_STEP_ATTEMPTS",
     "AgentRuntime",
     "ApprovalError",
     "FailingTool",
+    "MissingContextError",
     "RecordingTool",
+    "RetryError",
     "RunStatus",
     "StepDefinition",
     "StepState",

@@ -244,9 +244,7 @@ class ApiKeyRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def issue(
-        self, tenant_id: str, label: str, key_hash: str, roles: Sequence[str] = ()
-    ) -> None:
+    def issue(self, tenant_id: str, label: str, key_hash: str, roles: Sequence[str] = ()) -> None:
         self._session.add(
             ApiKeyRow(
                 key_hash=key_hash,

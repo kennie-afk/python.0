@@ -158,9 +158,7 @@ def _significance(outcomes: Sequence[GroupOutcome]) -> float | None:
     return float(result.pvalue)
 
 
-def selection_outcomes(
-    groups: Sequence[str], selected: Sequence[bool]
-) -> tuple[GroupOutcome, ...]:
+def selection_outcomes(groups: Sequence[str], selected: Sequence[bool]) -> tuple[GroupOutcome, ...]:
     if len(groups) != len(selected):
         raise AdverseImpactError("groups and selections must be the same length")
 

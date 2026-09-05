@@ -96,9 +96,7 @@ class TestDemand:
         assert "falls short" in result.summary()
 
     def test_ample_capacity_reports_no_shortfall(self) -> None:
-        result = simulate(
-            scenario(starting_headcount=100, monthly_demand=10.0), months=6
-        )
+        result = simulate(scenario(starting_headcount=100, monthly_demand=10.0), months=6)
 
         assert result.first_shortfall_month is None
         assert "capacity holds" in result.summary()

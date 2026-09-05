@@ -22,12 +22,14 @@ TALENT_ACQUISITION = WorkflowDefinition(
             action_type=ActionType.SEND_MESSAGE,
             description="open personalised outreach and confirm continued interest",
             requires=("shortlist",),
+            requires_context=("recipient_email", "subject", "body"),
         ),
         StepDefinition(
             key="schedule",
             action_type=ActionType.SCHEDULE_INTERVIEW,
             description="match interviewer availability and book the interview",
             requires=("engage",),
+            requires_context=("attendees", "starts_at"),
         ),
         StepDefinition(
             key="offer",
@@ -83,6 +85,7 @@ ONBOARDING = WorkflowDefinition(
             action_type=ActionType.SCHEDULE_CHECK_IN,
             description="schedule milestone check-ins against the role requirements",
             requires=("learning_path",),
+            requires_context=("attendees", "starts_at"),
         ),
     ),
 )
@@ -107,6 +110,7 @@ RETENTION_INTERVENTION = WorkflowDefinition(
             action_type=ActionType.SCHEDULE_CHECK_IN,
             description="schedule a retention conversation with the manager",
             requires=("flag_risk",),
+            requires_context=("attendees", "starts_at"),
         ),
     ),
 )

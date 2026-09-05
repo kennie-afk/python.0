@@ -30,6 +30,15 @@ def registry(*, failing: frozenset[ActionType] = frozenset()) -> ToolRegistry:
     return tools
 
 
+CONTEXT = {
+    "recipient_email": "candidate@example.com",
+    "subject": "Interview invitation",
+    "body": "Are you available on Thursday?",
+    "attendees": ["interviewer@example.com"],
+    "starts_at": "2099-01-01T09:00:00+00:00",
+}
+
+
 def runtime(
     policy: TenantPolicy | None = None,
     tools: ToolRegistry | None = None,
@@ -49,7 +58,7 @@ class TestTalentAcquisition:
             autonomous_actions=frozenset(ActionType) - {ActionType.EXTEND_OFFER},
         )
         engine = runtime(policy)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -63,7 +72,7 @@ class TestTalentAcquisition:
             autonomous_actions=frozenset(ActionType) - {ActionType.EXTEND_OFFER},
         )
         engine = runtime(policy)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -73,7 +82,7 @@ class TestTalentAcquisition:
 
     def test_shortlisting_is_not_delegated_under_a_conservative_policy(self) -> None:
         engine = runtime()
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -86,7 +95,7 @@ class TestTalentAcquisition:
             autonomous_actions=frozenset(ActionType) - {ActionType.EXTEND_OFFER},
         )
         engine = runtime(policy)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
         engine.advance(run)
 
         engine.approve(run, "offer", approver="hr.partner@example.com")
@@ -102,7 +111,7 @@ class TestTalentAcquisition:
         )
         tools = registry()
         engine = runtime(policy, tools)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
         engine.advance(run)
 
         engine.reject(run, "offer", approver="hr.partner@example.com", reason="headcount frozen")
@@ -122,7 +131,7 @@ class TestOnboarding:
     def test_a_background_check_parks_the_run_awaiting_the_provider(self) -> None:
         policy = TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType))
         engine = runtime(policy)
-        run = engine.start(ONBOARDING, TENANT, "employee-7")
+        run = engine.start(ONBOARDING, TENANT, "employee-7", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -133,7 +142,7 @@ class TestOnboarding:
     def test_resolving_the_external_result_resumes_the_run_days_later(self) -> None:
         policy = TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType))
         engine = runtime(policy)
-        run = engine.start(ONBOARDING, TENANT, "employee-7")
+        run = engine.start(ONBOARDING, TENANT, "employee-7", context=dict(CONTEXT))
         engine.advance(run)
 
         engine.resolve_external(run, "background_check", {"verdict": "CLEAR"})
@@ -146,7 +155,7 @@ class TestOnboarding:
     def test_a_failed_background_check_stops_provisioning(self) -> None:
         policy = TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType))
         engine = runtime(policy)
-        run = engine.start(ONBOARDING, TENANT, "employee-7")
+        run = engine.start(ONBOARDING, TENANT, "employee-7", context=dict(CONTEXT))
         engine.advance(run)
 
         engine.resolve_external(run, "background_check", {"verdict": "FAILED"}, succeeded=False)
@@ -157,7 +166,9 @@ class TestOnboarding:
     def test_context_accumulates_across_steps(self) -> None:
         policy = TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType))
         engine = runtime(policy)
-        run = engine.start(ONBOARDING, TENANT, "employee-7", context={"role": "engineer"})
+        run = engine.start(
+            ONBOARDING, TENANT, "employee-7", context={**CONTEXT, "role": "engineer"}
+        )
         engine.advance(run)
         engine.resolve_external(run, "background_check", {"verdict": "CLEAR"})
 
@@ -171,7 +182,7 @@ class TestFailureHandling:
             TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType)),
             registry(failing=frozenset({ActionType.SCORE_CANDIDATE})),
         )
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -185,7 +196,7 @@ class TestFailureHandling:
             ),
             tools=ToolRegistry(),
         )
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -193,7 +204,7 @@ class TestFailureHandling:
 
     def test_approving_a_step_that_is_not_awaiting_approval_is_an_error(self) -> None:
         engine = runtime()
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
         engine.advance(run)
 
         with pytest.raises(ApprovalError, match="not awaiting approval"):
@@ -201,7 +212,7 @@ class TestFailureHandling:
 
     def test_an_approval_must_name_the_approver(self) -> None:
         engine = runtime()
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
         engine.advance(run)
 
         with pytest.raises(ApprovalError, match="name the approver"):
@@ -210,22 +221,20 @@ class TestFailureHandling:
     def test_a_denied_action_never_reaches_a_tool(self) -> None:
         tools = registry()
         engine = runtime(TenantPolicy.conservative(str(TENANT)), tools)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
         recording = tools.resolve(ActionType.EXTEND_OFFER)
         assert isinstance(recording, RecordingTool)
-        assert not any(
-            call.action_type is ActionType.EXTEND_OFFER for call in recording.calls
-        )
+        assert not any(call.action_type is ActionType.EXTEND_OFFER for call in recording.calls)
 
 
 class TestAuditTrail:
     def test_every_step_is_written_to_the_ledger(self) -> None:
         ledger = DecisionLedger()
         engine = runtime(ledger=ledger)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
 
         engine.advance(run)
 
@@ -239,7 +248,7 @@ class TestAuditTrail:
             autonomous_actions=frozenset(ActionType) - {ActionType.EXTEND_OFFER},
         )
         engine = runtime(policy, ledger=ledger)
-        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42")
+        run = engine.start(TALENT_ACQUISITION, TENANT, "candidate-42", context=dict(CONTEXT))
         engine.advance(run)
 
         engine.approve(run, "offer", approver="hr.partner@example.com")
@@ -252,10 +261,12 @@ class TestAuditTrail:
     def test_the_ledger_can_be_filtered_to_one_candidate(self) -> None:
         ledger = DecisionLedger()
         engine = runtime(ledger=ledger)
-        engine.advance(engine.start(TALENT_ACQUISITION, TENANT, "candidate-1"))
-        engine.advance(engine.start(TALENT_ACQUISITION, TENANT, "candidate-2"))
+        engine.advance(
+            engine.start(TALENT_ACQUISITION, TENANT, "candidate-1", context=dict(CONTEXT))
+        )
+        engine.advance(
+            engine.start(TALENT_ACQUISITION, TENANT, "candidate-2", context=dict(CONTEXT))
+        )
 
         assert ledger.for_subject("candidate-1")
-        assert all(
-            entry.subject_id == "candidate-1" for entry in ledger.for_subject("candidate-1")
-        )
+        assert all(entry.subject_id == "candidate-1" for entry in ledger.for_subject("candidate-1"))

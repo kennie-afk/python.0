@@ -84,9 +84,7 @@ class AttritionModel:
     def algorithm(self) -> str:
         return self._algorithm
 
-    def train(
-        self, snapshots: Sequence[EmployeeSnapshot], left: Sequence[bool]
-    ) -> TrainingReport:
+    def train(self, snapshots: Sequence[EmployeeSnapshot], left: Sequence[bool]) -> TrainingReport:
         if len(snapshots) != len(left):
             raise ModelError("snapshots and outcomes must be the same length")
         if len(snapshots) < MINIMUM_TRAINING_ROWS:

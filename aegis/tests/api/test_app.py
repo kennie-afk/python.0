@@ -44,6 +44,15 @@ def other_auth(platform: Platform) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+CONTEXT = {
+    "recipient_email": "candidate@example.com",
+    "subject": "Interview invitation",
+    "body": "Are you available on Thursday?",
+    "attendees": ["interviewer@example.com"],
+    "starts_at": "2099-01-01T09:00:00+00:00",
+}
+
+
 def employee(index: int, leaving: bool) -> dict[str, float | int | str]:
     return {
         "subject_key": f"subj_{index}",
@@ -99,9 +108,7 @@ class TestAuthentication:
 
         assert client.get("/v1/ledger", headers={"X-Api-Key": key}).status_code == 200
 
-    def test_a_revoked_api_key_stops_working(
-        self, client: TestClient, platform: Platform
-    ) -> None:
+    def test_a_revoked_api_key_stops_working(self, client: TestClient, platform: Platform) -> None:
         key = generate_api_key()
         with platform.database.session() as session:
             repository = ApiKeyRepository(session)
@@ -120,7 +127,11 @@ class TestTenantIsolation:
     ) -> None:
         created = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         ).json()
 
@@ -131,7 +142,11 @@ class TestTenantIsolation:
     ) -> None:
         client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         )
 
@@ -158,7 +173,11 @@ class TestPersistence:
     ) -> None:
         created = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         ).json()
 
@@ -171,7 +190,11 @@ class TestPersistence:
     def test_an_approval_persists(self, client: TestClient, auth: dict[str, str]) -> None:
         created = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         ).json()
         step = created["pending_approvals"][0]
@@ -210,7 +233,11 @@ class TestPersistence:
         for subject in ("candidate-1", "candidate-2", "candidate-3"):
             client.post(
                 "/v1/runs",
-                json={"workflow": "talent_acquisition", "subject_id": subject},
+                json={
+                    "workflow": "talent_acquisition",
+                    "subject_id": subject,
+                    "context": CONTEXT,
+                },
                 headers=auth,
             )
 
@@ -271,13 +298,31 @@ class TestWorkflows:
 
         assert "talent_acquisition" in catalogue
         assert "onboarding" in catalogue
+        assert "recipient_email" in catalogue["talent_acquisition"]["required_context"]
+
+    def test_a_run_without_required_context_is_refused_upfront(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        response = client.post(
+            "/v1/runs",
+            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            headers=auth,
+        )
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "missing-context"
+        assert "recipient_email" in response.json()["detail"]
 
     def test_starting_a_run_stops_for_approval(
         self, client: TestClient, auth: dict[str, str]
     ) -> None:
         response = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         )
 
@@ -289,7 +334,9 @@ class TestWorkflows:
         self, client: TestClient, auth: dict[str, str]
     ) -> None:
         response = client.post(
-            "/v1/runs", json={"workflow": "nope", "subject_id": "c-1"}, headers=auth
+            "/v1/runs",
+            json={"workflow": "nope", "subject_id": "c-1", "context": CONTEXT},
+            headers=auth,
         )
 
         assert response.status_code == 404
@@ -299,7 +346,11 @@ class TestWorkflows:
     ) -> None:
         created = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         ).json()
 
@@ -316,7 +367,11 @@ class TestWorkflows:
     ) -> None:
         created = client.post(
             "/v1/runs",
-            json={"workflow": "talent_acquisition", "subject_id": "candidate-1"},
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-1",
+                "context": CONTEXT,
+            },
             headers=auth,
         ).json()
         step = created["pending_approvals"][0]
@@ -353,9 +408,7 @@ class TestComplianceEndpoints:
         assert "gender" not in body["attributes"]
         assert body["attributes"]["years_experience"] == 7
 
-    def test_a_disparate_process_is_flagged(
-        self, client: TestClient, auth: dict[str, str]
-    ) -> None:
+    def test_a_disparate_process_is_flagged(self, client: TestClient, auth: dict[str, str]) -> None:
         response = client.post(
             "/v1/bias/adverse-impact",
             json={
@@ -390,3 +443,114 @@ class TestComplianceEndpoints:
         )
 
         assert response.status_code == 409
+
+
+class TestRetryingAFailedStep:
+    def _run_through_to(self, client: TestClient, auth: dict[str, str], slot: str) -> dict:
+        context = dict(CONTEXT) | {"starts_at": slot}
+        created = client.post(
+            "/v1/runs",
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": f"candidate-{slot}",
+                "context": context,
+            },
+            headers=auth,
+        ).json()
+        return client.post(
+            f"/v1/runs/{created['run_id']}/steps/shortlist/approve",
+            json={"approver": "recruiter@example.com"},
+            headers=auth,
+        ).json()
+
+    def test_a_double_booking_fails_the_second_run(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        slot = "2099-06-01T09:00:00+00:00"
+        self._run_through_to(client, auth, slot)
+        second = self._run_through_to(client, auth, slot)
+
+        assert second["status"] == "FAILED"
+        schedule = next(s for s in second["steps"] if s["key"] == "schedule")
+        assert schedule["status"] == "FAILED"
+
+    def test_a_new_slot_recovers_the_failed_run(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        slot = "2099-06-02T09:00:00+00:00"
+        self._run_through_to(client, auth, slot)
+        second = self._run_through_to(client, auth, slot)
+
+        response = client.post(
+            f"/v1/runs/{second['run_id']}/steps/schedule/retry",
+            json={
+                "actor": "recruiter@example.com",
+                "amendments": {"starts_at": "2099-06-03T11:00:00+00:00"},
+            },
+            headers=auth,
+        )
+
+        assert response.status_code == 200
+        recovered = response.json()
+        schedule = next(s for s in recovered["steps"] if s["key"] == "schedule")
+        assert schedule["status"] == "COMPLETED"
+        assert recovered["pending_approvals"] == ["offer"]
+
+    def test_the_retry_appears_in_the_audit_trail(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        slot = "2099-06-04T09:00:00+00:00"
+        self._run_through_to(client, auth, slot)
+        second = self._run_through_to(client, auth, slot)
+        client.post(
+            f"/v1/runs/{second['run_id']}/steps/schedule/retry",
+            json={
+                "actor": "recruiter@example.com",
+                "amendments": {"starts_at": "2099-06-05T11:00:00+00:00"},
+            },
+            headers=auth,
+        )
+
+        entries = client.get("/v1/ledger", headers=auth).json()
+        retried = [e for e in entries if e["outcome"] == "RETRIED"]
+
+        assert len(retried) == 1
+        assert retried[0]["approver"] == "recruiter@example.com"
+        assert client.get("/v1/ledger/verify", headers=auth).json()["intact"]
+
+    def test_retrying_a_step_that_did_not_fail_is_refused(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        created = client.post(
+            "/v1/runs",
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-ok",
+                "context": CONTEXT,
+            },
+            headers=auth,
+        ).json()
+
+        response = client.post(
+            f"/v1/runs/{created['run_id']}/steps/source/retry",
+            json={"actor": "recruiter@example.com"},
+            headers=auth,
+        )
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "retry-refused"
+
+    def test_another_tenant_cannot_retry_the_run(
+        self, client: TestClient, auth: dict[str, str], other_auth: dict[str, str]
+    ) -> None:
+        slot = "2099-06-06T09:00:00+00:00"
+        self._run_through_to(client, auth, slot)
+        second = self._run_through_to(client, auth, slot)
+
+        response = client.post(
+            f"/v1/runs/{second['run_id']}/steps/schedule/retry",
+            json={"actor": "intruder@example.com"},
+            headers=other_auth,
+        )
+
+        assert response.status_code == 404

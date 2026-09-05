@@ -60,9 +60,9 @@ class TestIdentityObfuscation:
     def test_a_different_salt_produces_a_different_pseudonym(self) -> None:
         other = AnonymizationEngine(salt="a-completely-different-salt-value")
 
-        assert engine().anonymize(candidate()).subject_key != other.anonymize(
-            candidate()
-        ).subject_key
+        assert (
+            engine().anonymize(candidate()).subject_key != other.anonymize(candidate()).subject_key
+        )
 
     def test_a_record_with_no_identifier_cannot_be_pseudonymised(self) -> None:
         with pytest.raises(ValueError, match="no stable identifier"):

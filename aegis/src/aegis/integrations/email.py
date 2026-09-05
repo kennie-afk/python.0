@@ -106,9 +106,7 @@ class EmailTool:
             return ToolResult.failed("refusing to send an email with no subject or no body")
 
         try:
-            reference = self._transport.deliver(
-                SentEmail(to=recipient, subject=subject, body=body)
-            )
+            reference = self._transport.deliver(SentEmail(to=recipient, subject=subject, body=body))
         except EmailError as error:
             return ToolResult.failed(str(error))
 

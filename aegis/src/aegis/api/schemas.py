@@ -39,6 +39,11 @@ class RejectionRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class RetryRequest(BaseModel):
+    actor: str = Field(min_length=1, max_length=200)
+    amendments: dict[str, Any] = Field(default_factory=dict)
+
+
 class ExternalResultRequest(BaseModel):
     succeeded: bool = True
     result: dict[str, Any] = Field(default_factory=dict)

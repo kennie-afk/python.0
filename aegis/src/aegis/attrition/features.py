@@ -69,9 +69,7 @@ class EmployeeSnapshot:
 
 
 def assert_no_protected_attributes(columns: Sequence[str]) -> None:
-    offending = sorted(
-        column for column in columns if column.lower() in PROTECTED_ATTRIBUTES
-    )
+    offending = sorted(column for column in columns if column.lower() in PROTECTED_ATTRIBUTES)
     if offending:
         raise ProtectedFeatureError(
             "attrition features must never include protected attributes, found: "

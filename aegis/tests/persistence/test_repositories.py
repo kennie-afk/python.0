@@ -17,6 +17,14 @@ from aegis.persistence import (
     RunRepository,
 )
 
+CONTEXT = {
+    "recipient_email": "candidate@example.com",
+    "subject": "Interview invitation",
+    "body": "Are you available on Thursday?",
+    "attendees": ["interviewer@example.com"],
+    "starts_at": "2099-01-01T09:00:00+00:00",
+}
+
 TENANT = "66666666-6666-6666-6666-666666666666"
 OTHER = "77777777-7777-7777-7777-777777777777"
 
@@ -37,7 +45,7 @@ def make_run(policy: TenantPolicy | None = None):
         tools=tools,
         ledger=DecisionLedger(),
     )
-    run = runtime.start(TALENT_ACQUISITION, UUID(TENANT), "candidate-42")
+    run = runtime.start(TALENT_ACQUISITION, UUID(TENANT), "candidate-42", context=dict(CONTEXT))
     runtime.advance(run)
     return runtime, run
 
@@ -138,7 +146,16 @@ class TestRunPersistence:
             ),
             tools=tools,
         )
-        run = runtime.start(ONBOARDING, UUID(TENANT), "employee-9", context={"role": "engineer"})
+        run = runtime.start(
+            ONBOARDING,
+            UUID(TENANT),
+            "employee-9",
+            context={
+                "role": "engineer",
+                "attendees": ["manager@example.com"],
+                "starts_at": "2099-01-01T09:00:00+00:00",
+            },
+        )
         runtime.advance(run)
 
         with database.session() as session:
@@ -174,9 +191,7 @@ class TestLedgerPersistence:
         assert report.intact
         assert report.entries_checked == 4
 
-    def test_the_head_survives_a_restart_so_the_chain_continues(
-        self, database: Database
-    ) -> None:
+    def test_the_head_survives_a_restart_so_the_chain_continues(self, database: Database) -> None:
         ledger = DecisionLedger()
         with database.session() as session:
             repository = LedgerRepository(session)
@@ -253,9 +268,7 @@ class TestPolicyPersistence:
         with database.session() as session:
             assert PolicyRepository(session).load(OTHER) is None
 
-    def test_updating_a_policy_replaces_rather_than_duplicates(
-        self, database: Database
-    ) -> None:
+    def test_updating_a_policy_replaces_rather_than_duplicates(self, database: Database) -> None:
         with database.session() as session:
             repository = PolicyRepository(session)
             repository.upsert(TENANT, "Acme", TenantPolicy.conservative(TENANT))

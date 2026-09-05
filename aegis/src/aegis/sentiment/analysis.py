@@ -13,17 +13,48 @@ TOKEN = re.compile(r"[a-z']+")
 
 POSITIVE = frozenset(
     {
-        "good", "great", "excellent", "supportive", "clear", "fair", "flexible",
-        "respected", "valued", "growing", "learning", "collaborative", "trust",
-        "recognised", "recognized", "happy", "proud", "improving", "helpful",
+        "good",
+        "great",
+        "excellent",
+        "supportive",
+        "clear",
+        "fair",
+        "flexible",
+        "respected",
+        "valued",
+        "growing",
+        "learning",
+        "collaborative",
+        "trust",
+        "recognised",
+        "recognized",
+        "happy",
+        "proud",
+        "improving",
+        "helpful",
     }
 )
 
 NEGATIVE = frozenset(
     {
-        "burnout", "burnt", "exhausted", "overworked", "unclear", "unfair",
-        "ignored", "stuck", "underpaid", "toxic", "micromanaged", "stressed",
-        "frustrated", "leaving", "demoralised", "demoralized", "chaotic", "blocked",
+        "burnout",
+        "burnt",
+        "exhausted",
+        "overworked",
+        "unclear",
+        "unfair",
+        "ignored",
+        "stuck",
+        "underpaid",
+        "toxic",
+        "micromanaged",
+        "stressed",
+        "frustrated",
+        "leaving",
+        "demoralised",
+        "demoralized",
+        "chaotic",
+        "blocked",
     }
 )
 

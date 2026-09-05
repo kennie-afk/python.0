@@ -29,10 +29,7 @@ class GovernanceGate:
         if unreadable:
             return Decision(
                 verdict=Verdict.DENY,
-                reasons=(
-                    "agent may not touch restricted data: "
-                    + ", ".join(sorted(unreadable)),
-                ),
+                reasons=("agent may not touch restricted data: " + ", ".join(sorted(unreadable)),),
             )
 
         reasons: list[str] = []
@@ -47,10 +44,7 @@ class GovernanceGate:
                 f"{action.action_type} is not delegated to autonomous execution by this tenant"
             )
 
-        if (
-            action.confidence is not None
-            and action.confidence < self._policy.confidence_floor
-        ):
+        if action.confidence is not None and action.confidence < self._policy.confidence_floor:
             reasons.append(
                 f"confidence {action.confidence:.2f} is below the tenant floor of "
                 f"{self._policy.confidence_floor:.2f}"

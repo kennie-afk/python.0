@@ -56,9 +56,7 @@ def training_set(size: int = 200) -> tuple[list[EmployeeSnapshot], list[bool]]:
         snapshots.append(
             snapshot(
                 key=f"subj_{index}",
-                months_since_promotion=RANDOM.uniform(30, 60)
-                if leaving
-                else RANDOM.uniform(1, 12),
+                months_since_promotion=RANDOM.uniform(30, 60) if leaving else RANDOM.uniform(1, 12),
                 salary=RANDOM.uniform(70_000, 85_000)
                 if leaving
                 else RANDOM.uniform(100_000, 120_000),

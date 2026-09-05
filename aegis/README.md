@@ -54,9 +54,9 @@ The gate checks these **before** it consults tenant policy, so no configuration 
 ```python
 policy = TenantPolicy(
     tenant_id=tenant,
-    autonomous_actions=frozenset(ActionType),      # delegate everything
+    autonomous_actions=frozenset(ActionType),  # delegate everything
     readable_domains=frozenset(RestrictedDomain),  # grant every domain
-    confidence_floor=0.0,                          # accept any confidence
+    confidence_floor=0.0,  # accept any confidence
 )
 
 GovernanceGate(policy).evaluate(offer).verdict
@@ -87,9 +87,9 @@ runtime = AgentRuntime(gate=GovernanceGate(policy), tools=registry, ledger=ledge
 run = runtime.start(ONBOARDING, tenant_id, "employee-7")
 runtime.advance(run)
 
-run.state("background_check").status     # AWAITING_EXTERNAL
+run.state("background_check").status  # AWAITING_EXTERNAL
 runtime.resolve_external(run, "background_check", {"verdict": "CLEAR"})
-run.status                               # COMPLETED
+run.status  # COMPLETED
 ```
 
 ## Anonymisation before inference
@@ -149,8 +149,8 @@ model = AttritionModel("gradient_boosting")
 model.train(snapshots, left)
 
 score = model.score(snapshot)
-score.band              # RiskBand.HIGH
-score.top_drivers(3)    # months_since_promotion, above cohort
+score.band  # RiskBand.HIGH
+score.top_drivers(3)  # months_since_promotion, above cohort
 ```
 
 Gradient boosting, random forest and logistic regression are all supported. Training on fewer

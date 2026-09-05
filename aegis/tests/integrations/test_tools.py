@@ -90,9 +90,7 @@ class TestEmail:
         assert not result.succeeded
 
     def test_the_tool_declares_only_the_action_it_handles(self) -> None:
-        assert EmailTool(MockEmailTransport()).handles() == frozenset(
-            {ActionType.SEND_MESSAGE}
-        )
+        assert EmailTool(MockEmailTransport()).handles() == frozenset({ActionType.SEND_MESSAGE})
 
 
 class TestCalendar:

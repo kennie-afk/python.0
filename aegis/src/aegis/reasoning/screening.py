@@ -73,9 +73,7 @@ class CandidateScreener:
         payload = completion.as_json()
 
         missing = [
-            field
-            for field in ("score", "recommendation", "rationale")
-            if field not in payload
+            field for field in ("score", "recommendation", "rationale") if field not in payload
         ]
         if missing:
             raise UnparseableResponseError(

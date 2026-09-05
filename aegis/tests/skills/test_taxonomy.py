@@ -53,9 +53,7 @@ class TestTaxonomy:
 
     def test_an_alias_claimed_twice_is_rejected(self) -> None:
         with pytest.raises(TaxonomyError, match="more than one skill"):
-            SkillTaxonomy(
-                [Skill("python", frozenset({"py"})), Skill("pypy", frozenset({"py"}))]
-            )
+            SkillTaxonomy([Skill("python", frozenset({"py"})), Skill("pypy", frozenset({"py"}))])
 
     def test_an_empty_taxonomy_is_rejected(self) -> None:
         with pytest.raises(TaxonomyError, match="at least one skill"):
@@ -148,9 +146,7 @@ class TestMobility:
         assert any("leadership" in step for step in match.development_path())
 
     def test_roles_are_ranked_with_ready_ones_first(self) -> None:
-        ready = OpenRole(
-            "ready", "Backend", (SkillRequirement("python", Proficiency.WORKING),)
-        )
+        ready = OpenRole("ready", "Backend", (SkillRequirement("python", Proficiency.WORKING),))
         stretch = OpenRole(
             "stretch",
             "Lead",

@@ -85,9 +85,7 @@ class SkillTaxonomy:
             self._lookup[skill.name.lower()] = skill.name
             for alias in skill.aliases:
                 if alias.lower() in self._lookup:
-                    raise TaxonomyError(
-                        f"alias {alias!r} is claimed by more than one skill"
-                    )
+                    raise TaxonomyError(f"alias {alias!r} is claimed by more than one skill")
                 self._lookup[alias.lower()] = skill.name
 
     @property
@@ -191,9 +189,7 @@ def forecast_gaps(
     gaps: list[Gap] = []
     for requirement in requirements:
         qualified = sum(
-            1
-            for profile in profiles
-            if profile.level(requirement.skill) >= requirement.required
+            1 for profile in profiles if profile.level(requirement.skill) >= requirement.required
         )
         retained = int(qualified * (1.0 - attrition_rate))
         gaps.append(

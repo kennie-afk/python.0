@@ -49,9 +49,10 @@ class TestPromptDiscipline:
         assert first.fingerprint() == second.fingerprint()
 
     def test_a_changed_prompt_fingerprints_differently(self) -> None:
-        assert Prompt(system="s", user="u").fingerprint() != Prompt(
-            system="s", user="different"
-        ).fingerprint()
+        assert (
+            Prompt(system="s", user="u").fingerprint()
+            != Prompt(system="s", user="different").fingerprint()
+        )
 
     def test_the_system_prompt_forbids_protected_inference(self) -> None:
         from aegis.reasoning import SYSTEM_PROMPT

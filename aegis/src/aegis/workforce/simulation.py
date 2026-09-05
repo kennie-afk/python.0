@@ -136,9 +136,7 @@ def compare(scenarios: Sequence[Scenario], months: int = 12) -> tuple[Simulation
     return tuple(simulate(scenario, months) for scenario in scenarios)
 
 
-def hires_required(
-    scenario: Scenario, target_headcount: int, months: int = 12
-) -> int:
+def hires_required(scenario: Scenario, target_headcount: int, months: int = 12) -> int:
     if target_headcount < 0:
         raise SimulationError("target headcount cannot be negative")
 

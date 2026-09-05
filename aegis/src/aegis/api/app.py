@@ -3,13 +3,12 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator, Sequence
 from typing import Annotated, Any
-from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from aegis.agents.runtime import AgentRuntime, ApprovalError
+from aegis.agents.runtime import AgentRuntime, ApprovalError, MissingContextError, RetryError
 from aegis.agents.tools import RecordingTool, ToolRegistry
 from aegis.agents.workflow import WorkflowRun
 from aegis.anonymization.engine import AnonymizationEngine
@@ -27,6 +26,7 @@ from aegis.api.schemas import (
     IntegrityView,
     LedgerEntryView,
     RejectionRequest,
+    RetryRequest,
     RunView,
     ScoreRequest,
     ScreeningView,
@@ -176,11 +176,16 @@ def principal(
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="api key is not valid"
                 )
-            return Principal(
-                tenant_id=row.tenant_id,
-                subject=f"key:{row.label}",
-                roles=frozenset(row.roles),
-            )
+            try:
+                return Principal(
+                    tenant_id=row.tenant_id,
+                    subject=f"key:{row.label}",
+                    roles=frozenset(row.roles),
+                )
+            except AuthError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)
+                ) from error
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -207,6 +212,32 @@ async def approval_error_handler(_: object, error: ApprovalError) -> JSONRespons
             "detail": str(error),
             "status": 409,
             "code": "approval-conflict",
+        },
+    )
+
+
+@app.exception_handler(MissingContextError)
+async def missing_context_handler(_: object, error: MissingContextError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={
+            "title": "missing-context",
+            "detail": str(error),
+            "status": 422,
+            "code": "missing-context",
+        },
+    )
+
+
+@app.exception_handler(RetryError)
+async def retry_error_handler(_: object, error: RetryError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "title": "retry-refused",
+            "detail": str(error),
+            "status": 409,
+            "code": "retry-refused",
         },
     )
 
@@ -243,8 +274,14 @@ def health() -> dict[str, str]:
 
 
 @app.get("/v1/workflows")
-def list_workflows() -> dict[str, list[str]]:
-    return {name: [step.key for step in wf.steps] for name, wf in CATALOGUE.items()}
+def list_workflows() -> dict[str, dict[str, list[str]]]:
+    return {
+        name: {
+            "steps": [step.key for step in wf.steps],
+            "required_context": list(wf.required_context),
+        }
+        for name, wf in CATALOGUE.items()
+    }
 
 
 def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
@@ -270,9 +307,7 @@ def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
 
 
 @app.post("/v1/runs", status_code=status.HTTP_201_CREATED)
-def start_run(
-    request: StartRunRequest, caller: PrincipalDep, platform: PlatformDep
-) -> RunView:
+def start_run(request: StartRunRequest, caller: PrincipalDep, platform: PlatformDep) -> RunView:
     definition = CATALOGUE.get(request.workflow)
     if definition is None:
         raise HTTPException(
@@ -282,9 +317,7 @@ def start_run(
 
     with platform.database.session() as session:
         runtime = platform.runtime(session, caller.tenant_id)
-        run = runtime.start(
-            definition, UUID(caller.tenant_id), request.subject_id, request.context
-        )
+        run = runtime.start(definition, caller.tenant_uuid, request.subject_id, request.context)
         runtime.advance(run)
         RunRepository(session).save(run)
         return _view(run, runtime)
@@ -343,6 +376,25 @@ def reject_step(
         step_key=step_key,
         approver=request.approver,
         reason=request.reason,
+    )
+
+
+@app.post("/v1/runs/{run_id}/steps/{step_key}/retry")
+def retry_step(
+    run_id: str,
+    step_key: str,
+    request: RetryRequest,
+    caller: PrincipalDep,
+    platform: PlatformDep,
+) -> RunView:
+    return _mutate_run(
+        platform,
+        caller,
+        run_id,
+        "retry",
+        step_key=step_key,
+        actor=request.actor,
+        amendments=request.amendments,
     )
 
 
@@ -409,9 +461,7 @@ def screen_candidate(
 
 
 @app.post("/v1/bias/adverse-impact")
-def adverse_impact(
-    request: AdverseImpactRequest, caller: PrincipalDep
-) -> AdverseImpactResponse:
+def adverse_impact(request: AdverseImpactRequest, caller: PrincipalDep) -> AdverseImpactResponse:
     report = four_fifths_test(
         [
             GroupOutcome(group=item.group, selected=item.selected, total=item.total)

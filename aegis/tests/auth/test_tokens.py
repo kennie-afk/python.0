@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
+import jwt
 import pytest
 
 from aegis.auth import (
@@ -108,3 +111,31 @@ class TestApiKeys:
 
     def test_different_keys_hash_differently(self) -> None:
         assert hash_api_key(generate_api_key()) != hash_api_key(generate_api_key())
+
+
+class TestTenantClaimValidation:
+    def test_a_token_carrying_a_malformed_tenant_is_rejected(self) -> None:
+        service = TokenService(secret="a" * 32)
+        forged = jwt.encode(
+            {
+                "iss": "aegis",
+                "aud": "aegis-api",
+                "sub": "attacker@example.com",
+                "tid": "not-a-tenant",
+                "roles": ["ADMIN"],
+                "iat": int(datetime.now(UTC).timestamp()),
+                "exp": int((datetime.now(UTC) + timedelta(minutes=5)).timestamp()),
+            },
+            "a" * 32,
+            algorithm="HS256",
+        )
+
+        with pytest.raises(AuthError, match="not a valid tenant id"):
+            service.verify(forged)
+
+    def test_a_valid_tenant_claim_exposes_a_uuid(self) -> None:
+        service = TokenService(secret="a" * 32)
+        tenant = str(uuid4())
+        principal = service.verify(service.mint(tenant, "hr@example.com"))
+
+        assert principal.tenant_uuid == UUID(tenant)

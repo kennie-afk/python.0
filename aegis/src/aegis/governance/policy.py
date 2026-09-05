@@ -46,8 +46,7 @@ class TenantPolicy:
         overlap = self.autonomous_actions & self.forbidden_actions
         if overlap:
             raise ValueError(
-                "an action cannot be both autonomous and forbidden: "
-                + ", ".join(sorted(overlap))
+                "an action cannot be both autonomous and forbidden: " + ", ".join(sorted(overlap))
             )
         if not 0.0 <= self.confidence_floor <= 1.0:
             raise ValueError("confidence_floor must be within [0,1]")

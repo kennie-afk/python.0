@@ -24,6 +24,17 @@ class ApprovalError(RuntimeError):
     pass
 
 
+class MissingContextError(ValueError):
+    pass
+
+
+class RetryError(RuntimeError):
+    pass
+
+
+MAX_STEP_ATTEMPTS = 3
+
+
 def _default_rationale(step: StepDefinition, run: WorkflowRun) -> str:
     return f"{step.description} for {run.subject_id} in workflow {run.definition.name}"
 
@@ -52,11 +63,21 @@ class AgentRuntime:
         subject_id: str,
         context: Mapping[str, Any] | None = None,
     ) -> WorkflowRun:
+        supplied = dict(context or {})
+        missing = definition.missing_context(supplied)
+        if missing:
+            raise MissingContextError(
+                f"workflow {definition.name!r} cannot start without "
+                + ", ".join(missing)
+                + "; these are required by its steps and supplying them later would mean "
+                "failing partway through a run that has already acted"
+            )
+
         return WorkflowRun(
             definition=definition,
             tenant_id=tenant_id,
             subject_id=subject_id,
-            context=dict(context or {}),
+            context=supplied,
         )
 
     def advance(self, run: WorkflowRun, max_steps: int = 50) -> WorkflowRun:
@@ -75,9 +96,7 @@ class AgentRuntime:
     def approve(self, run: WorkflowRun, step_key: str, approver: str) -> WorkflowRun:
         state = run.state(step_key)
         if state.status is not StepStatus.AWAITING_APPROVAL:
-            raise ApprovalError(
-                f"step {step_key!r} is {state.status} and is not awaiting approval"
-            )
+            raise ApprovalError(f"step {step_key!r} is {state.status} and is not awaiting approval")
         if not approver.strip():
             raise ApprovalError("an approval must name the approver")
 
@@ -89,9 +108,7 @@ class AgentRuntime:
     def reject(self, run: WorkflowRun, step_key: str, approver: str, reason: str) -> WorkflowRun:
         state = run.state(step_key)
         if state.status is not StepStatus.AWAITING_APPROVAL:
-            raise ApprovalError(
-                f"step {step_key!r} is {state.status} and is not awaiting approval"
-            )
+            raise ApprovalError(f"step {step_key!r} is {state.status} and is not awaiting approval")
         state.approver = approver
         state.transition(StepStatus.REJECTED, (f"rejected by {approver}: {reason}",))
         self._record(run, step_key, "REJECTED", (f"rejected by {approver}: {reason}",), approver)
@@ -113,6 +130,54 @@ class AgentRuntime:
         else:
             state.transition(StepStatus.FAILED, ("external result reported failure",))
         self._record(run, step_key, state.status, state.reasons, None)
+        return self.advance(run)
+
+    def retry(
+        self,
+        run: WorkflowRun,
+        step_key: str,
+        actor: str,
+        amendments: Mapping[str, Any] | None = None,
+    ) -> WorkflowRun:
+        state = run.state(step_key)
+        if state.status is not StepStatus.FAILED:
+            raise RetryError(
+                f"step {step_key!r} is {state.status} and only a FAILED step may be retried; "
+                "a denied or rejected step is a decision, not a fault"
+            )
+        if not actor.strip():
+            raise RetryError("a retry must name the person requesting it")
+        if state.attempts >= MAX_STEP_ATTEMPTS:
+            raise RetryError(
+                f"step {step_key!r} has already been attempted {state.attempts} times; "
+                "it needs a change of approach rather than another attempt"
+            )
+
+        changes = dict(amendments or {})
+        step = run.definition.step(step_key)
+        if step.requires_context:
+            unknown = set(changes) - set(step.requires_context)
+            if unknown:
+                raise RetryError(
+                    f"step {step_key!r} takes {sorted(step.requires_context)}; "
+                    f"a retry cannot introduce {sorted(unknown)}"
+                )
+        elif changes:
+            raise RetryError(f"step {step_key!r} declares no context to amend")
+
+        blank = [key for key, value in changes.items() if value in (None, "")]
+        if blank:
+            raise RetryError(f"a retry cannot blank out {sorted(blank)}")
+
+        run.context.update(changes)
+        state.result = {}
+        state.approver = None
+        state.transition(StepStatus.PENDING, ())
+        reasons = (
+            f"retried by {actor}"
+            + (f" amending {', '.join(sorted(changes))}" if changes else " with no amendment"),
+        )
+        self._record(run, step_key, "RETRIED", reasons, actor)
         return self.advance(run)
 
     def pending_approvals(self, run: WorkflowRun) -> tuple[str, ...]:

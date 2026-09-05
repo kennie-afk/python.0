@@ -135,9 +135,7 @@ class TestPermissionBoundaries:
 
 class TestTenantIsolation:
     def test_an_action_from_another_tenant_is_denied(self) -> None:
-        decision = gate().evaluate(
-            action(ActionType.SCHEDULE_INTERVIEW, tenant=uuid4())
-        )
+        decision = gate().evaluate(action(ActionType.SCHEDULE_INTERVIEW, tenant=uuid4()))
 
         assert decision.blocked
         assert any("different tenant" in reason for reason in decision.reasons)

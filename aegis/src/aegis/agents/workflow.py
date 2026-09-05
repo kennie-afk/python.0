@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -46,6 +46,7 @@ class StepDefinition:
     action_type: ActionType
     description: str
     requires: tuple[str, ...] = ()
+    requires_context: tuple[str, ...] = ()
     awaits_external: bool = False
     optional: bool = False
 
@@ -68,6 +69,22 @@ class WorkflowDefinition:
                     f"step {step.key!r} depends on {sorted(missing)} which is not defined before it"
                 )
             known.add(step.key)
+
+    @property
+    def required_context(self) -> tuple[str, ...]:
+        keys: list[str] = []
+        for step in self.steps:
+            for key in step.requires_context:
+                if key not in keys:
+                    keys.append(key)
+        return tuple(keys)
+
+    def missing_context(self, supplied: Mapping[str, Any]) -> tuple[str, ...]:
+        return tuple(
+            key
+            for key in self.required_context
+            if key not in supplied or supplied[key] in (None, "")
+        )
 
     def step(self, key: str) -> StepDefinition:
         for step in self.steps:

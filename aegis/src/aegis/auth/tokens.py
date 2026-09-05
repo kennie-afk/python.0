@@ -4,6 +4,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import jwt
 
@@ -21,6 +22,16 @@ class Principal:
     tenant_id: str
     subject: str
     roles: frozenset[str]
+
+    def __post_init__(self) -> None:
+        try:
+            UUID(self.tenant_id)
+        except (ValueError, AttributeError, TypeError) as error:
+            raise AuthError(f"tenant claim {self.tenant_id!r} is not a valid tenant id") from error
+
+    @property
+    def tenant_uuid(self) -> UUID:
+        return UUID(self.tenant_id)
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
