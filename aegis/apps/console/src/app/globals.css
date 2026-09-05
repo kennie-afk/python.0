@@ -1,31 +1,33 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #f7fbfb;
+  --color-canvas: #fbfbfc;
   --color-surface: #ffffff;
-  --color-raised: #f1f7f7;
-  --color-rail: #fbfdfd;
-  --color-ink: #0b0d12;
-  --color-muted: #6b7280;
-  --color-faint: #9ca3af;
-  --color-line: #dfeaea;
-  --color-accent: #0f766e;
-  --color-accent-soft: #e2f2f0;
+  --color-raised: #f6f7f9;
+  --color-rail: #ffffff;
+  --color-ink: #12141a;
+  --color-muted: #6e7683;
+  --color-faint: #9aa1ad;
+  --color-line: #e9eaee;
+  --color-accent: #0d7d72;
+  --color-accent-soft: #e6f4f2;
   --color-violet: #b45309;
-  --color-violet-soft: #fdf3e3;
+  --color-violet-soft: #fdf4e6;
   --color-good: #047857;
-  --color-good-soft: #e6f4ef;
+  --color-good-soft: #e9f4f0;
   --color-warn: #b45309;
-  --color-warn-soft: #fdf3e3;
+  --color-warn-soft: #fdf4e6;
   --color-danger: #dc2626;
-  --color-danger-soft: #fdeceb;
+  --color-danger-soft: #fdeded;
 }
 
 html,
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 *:focus-visible {

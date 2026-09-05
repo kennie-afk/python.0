@@ -15,9 +15,9 @@ export function Rail({ items }: { items: RailItem[] }) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[92px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-rail)] md:flex">
-      <div className="flex justify-center py-6">
-        <Image src="/mark.svg" alt="Aegis" width={256} height={256} className="h-8 w-8" priority />
+    <aside className="sticky top-0 hidden h-screen w-[84px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-rail)] md:flex">
+      <div className="flex justify-center py-5">
+        <Image src="/mark.svg" alt="Aegis" width={256} height={256} className="h-7 w-7" priority />
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-2.5">
@@ -29,13 +29,13 @@ export function Rail({ items }: { items: RailItem[] }) {
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-col items-center gap-1.5 rounded-xl px-1 py-3 text-[0.6875rem] font-medium transition-colors ${
+              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[0.625rem] font-medium transition-colors ${
                 active
                   ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
                   : "text-[var(--color-muted)] hover:bg-[var(--color-raised)] hover:text-[var(--color-ink)]"
               }`}
             >
-              <Icon name={item.icon} className="h-[22px] w-[22px]" />
+              <Icon name={item.icon} className="h-[19px] w-[19px]" />
               <span className="text-center leading-tight">{item.label}</span>
             </Link>
           );

@@ -64,7 +64,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
       <div className="mb-6 flex items-center gap-3">
         <Badge value={run.status} />
         {run.pending_approvals.length > 0 ? (
-          <span className="text-sm text-[var(--color-muted)]">
+          <span className="text-[0.8125rem] text-[var(--color-muted)]">
             waiting on {run.pending_approvals.join(", ").replaceAll("_", " ")}
           </span>
         ) : null}

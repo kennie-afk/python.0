@@ -98,14 +98,14 @@ export default async function OverviewPage() {
           <div className="space-y-4">
             <div>
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-[var(--color-muted)]">Approvals recorded</span>
-                <span className="text-2xl font-semibold tabular-nums">{approvals}</span>
+                <span className="text-[0.8125rem] text-[var(--color-muted)]">Approvals recorded</span>
+                <span className="text-[1.125rem] font-semibold tabular-nums">{approvals}</span>
               </div>
             </div>
             <div>
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-[var(--color-muted)]">Agent actions recorded</span>
-                <span className="text-2xl font-semibold tabular-nums">
+                <span className="text-[0.8125rem] text-[var(--color-muted)]">Agent actions recorded</span>
+                <span className="text-[1.125rem] font-semibold tabular-nums">
                   {entries.length - approvals}
                 </span>
               </div>

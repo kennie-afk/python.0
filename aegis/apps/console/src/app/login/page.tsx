@@ -20,7 +20,7 @@ export default async function LoginPage() {
             priority
             className="mb-6 h-10 w-auto"
           />
-          <p className="text-sm text-[var(--color-muted)]">
+          <p className="text-[0.8125rem] text-[var(--color-muted)]">
             Governed automation for hiring, onboarding and retention.
           </p>
         </div>

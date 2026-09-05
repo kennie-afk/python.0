@@ -171,27 +171,27 @@ export function ScreeningForm() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-baseline gap-3">
               <Badge value={state.result.recommendation} />
-              <span className="text-3xl font-semibold tabular-nums">
+              <span className="text-[1.125rem] font-semibold tabular-nums">
                 {state.result.score.toFixed(2)}
               </span>
             </div>
             <Meter value={state.result.score} />
-            <p className="text-sm text-[var(--color-muted)]">{state.result.rationale}</p>
+            <p className="text-[0.8125rem] text-[var(--color-muted)]">{state.result.rationale}</p>
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                <dt className="text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
                   Pseudonym
                 </dt>
                 <dd className="mt-0.5 break-all font-mono text-xs">{state.result.subject_key}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                <dt className="text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
                   Model
                 </dt>
                 <dd className="mt-0.5 text-sm">{state.result.model}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                <dt className="text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
                   Signals the model used
                 </dt>
                 <dd className="mt-0.5 text-sm">
@@ -199,7 +199,7 @@ export function ScreeningForm() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                <dt className="text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
                   Prompt fingerprint
                 </dt>
                 <dd className="mt-0.5 break-all font-mono text-xs">

@@ -133,7 +133,7 @@ export function RetryAction({
           }
           return (
             <label key={key} className="block">
-              <span className="block text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+              <span className="block text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
                 {label}
               </span>
               <input name={name} className={inputClass} />

@@ -14,7 +14,7 @@ export function TrainOnSample() {
 
   return (
     <form action={action} className="space-y-4">
-      <p className="text-sm text-[var(--color-muted)]">
+      <p className="text-[0.8125rem] text-[var(--color-muted)]">
         No model has been trained for this tenant yet. Point the API at your own leaver history to
         train properly, or train on a synthetic cohort now to see how the page works.
       </p>
@@ -85,10 +85,10 @@ export function ScoreEmployee() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-baseline gap-3">
               <Badge value={score.band} />
-              <span className="text-3xl font-semibold tabular-nums">
+              <span className="text-[1.125rem] font-semibold tabular-nums">
                 {(score.probability * 100).toFixed(0)}%
               </span>
-              <span className="text-sm text-[var(--color-muted)]">
+              <span className="text-[0.8125rem] text-[var(--color-muted)]">
                 chance of leaving within the horizon
               </span>
             </div>

@@ -120,7 +120,7 @@ export function ImpactForm() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
               <Badge value={state.result.verdict} />
-              <span className="text-sm text-[var(--color-muted)]">
+              <span className="text-[0.8125rem] text-[var(--color-muted)]">
                 measured against {state.result.reference_group}
               </span>
             </div>

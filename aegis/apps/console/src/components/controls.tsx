@@ -103,7 +103,7 @@ export function EmailListField({
 
   return (
     <div>
-      <span className="block text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+      <span className="block text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
         {label}
       </span>
       <div className="mt-1.5 space-y-2">
