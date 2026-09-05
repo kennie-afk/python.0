@@ -221,6 +221,34 @@ A web interface. The platform is API-first and every capability is reachable ove
 there is no front end.
 
 
+## Running it
+
+Copy the template and fill in the two secrets:
+
+```
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Use that value for `AEGIS_JWT_SECRET`, generate a second one for
+`AEGIS_ANONYMISATION_SALT`, and set a `POSTGRES_PASSWORD`. The salt pins every
+pseudonym the platform issues, so changing it later breaks the link between a
+subject and their past decisions. Set it once and keep it.
+
+Leave `AEGIS_MODEL_API_KEY` and `AEGIS_SMTP_HOST` empty and the platform runs on
+its deterministic scorer and a mock mail transport, which is what you want for a
+demo. Fill them in and it calls a hosted model and sends real email. `GET
+/v1/configuration` reports which of those a running deployment is actually using.
+
+Then:
+
+```
+docker compose up -d
+docker compose exec api python -m aegis.cli "Your Company" --posture conservative
+```
+
+That prints an API key once. Sign in to the console with it.
+
 ## Console
 
 A web console lives in `apps/console`. It signs in with a tenant API key, exchanges it for a
