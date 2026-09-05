@@ -50,6 +50,7 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

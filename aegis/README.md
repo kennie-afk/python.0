@@ -41,6 +41,9 @@ the evidence that it behaved correctly are the same system.
 | `persistence` | PostgreSQL storage for runs, ledger, policies, models and API keys | implemented |
 | `auth` | JWT tokens and hashed API keys carrying tenant and roles | implemented |
 | `integrations` | email and calendar tools an agent actually acts through | implemented |
+| `skills` | skill taxonomy, proficiency extraction, gap forecasting, mobility matching | implemented |
+| `workforce` | headcount, attrition and capacity simulation with hiring ramp | implemented |
+| `sentiment` | aspect-based sentiment with a privacy threshold and early warning | implemented |
 
 ## Governance is structural, not configurable
 
@@ -118,7 +121,7 @@ uv run ruff check .
 uv run mypy
 ```
 
-256 tests. Passes `mypy --strict` and `ruff` with zero findings.
+314 tests. Passes `mypy --strict` and `ruff` with zero findings.
 
 ```bash
 docker compose up
@@ -175,8 +178,44 @@ a SHA-256 hash. A tenant header is not authentication and is refused. Runs, ledg
 tenant policies, trained models and API keys live in PostgreSQL, so a restart loses nothing and
 the hash chain continues from its stored head rather than restarting at genesis.
 
+## Skills, mobility and planning
+
+Skills are extracted from free-text evidence against a taxonomy with aliases, and proficiency
+is inferred from tenure rather than how often a word appears — a candidate with six years of
+Python is an expert whether their CV says it twice or ten times. Gap forecasting compares
+qualified supply against required headcount over a horizon, eroded by expected attrition.
+
+Mobility matching scores an employee against open roles and separates the ones they are ready
+for from stretch roles, returning a development path naming the exact proficiency steps between
+them and the role. The same function inverted ranks internal candidates for a vacancy.
+
+Workforce simulation projects headcount, attrition and effective capacity month by month, with
+new hires ramping to productivity over a configurable period rather than counting fully from
+day one. `hires_required` solves the inverse: the monthly hiring rate needed to reach a target
+headcount, or an error saying the target is unreachable at that attrition rate.
+
+## Sentiment without surveillance
+
+Aspect-based scoring categorises feedback into leadership, culture, compensation, work-life
+balance, tooling and career growth, handling negation so "leadership is not clear" scores
+negative rather than positive.
+
+Groups below a minimum size are **withheld entirely** and reported as suppressed. A team of
+three cannot be reported on, because at that size an aggregate is a thin disguise for an
+individual's answer. A threshold below two is refused outright. No individual response is ever
+returned — only group aggregates. Early warning compares two periods and raises the aspects
+that dropped sharply, worst first.
+
+## Migrations
+
+```bash
+alembic upgrade head
+```
+
+Schema is versioned rather than created implicitly, and the initial revision applies and
+reverses cleanly.
+
 ## Not yet built
 
-Skill taxonomy and gap forecasting, internal mobility matching, workforce planning simulation,
-and aggregated sentiment analysis. Alembic is a dependency but migrations are not yet authored;
-schema creation is currently `create_all`.
+A web interface. The platform is API-first and every capability is reachable over HTTP, but
+there is no front end.
