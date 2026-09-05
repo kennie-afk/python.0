@@ -554,3 +554,112 @@ class TestRetryingAFailedStep:
         )
 
         assert response.status_code == 404
+
+
+class TestConsoleEndpoints:
+    def test_an_api_key_is_exchanged_for_a_token(
+        self, client: TestClient, platform: Platform
+    ) -> None:
+        key = generate_api_key()
+        with platform.database.session() as session:
+            ApiKeyRepository(session).issue(TENANT, "console", hash_api_key(key), ["ADMIN"])
+
+        response = client.post("/v1/auth/token", json={"api_key": key})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["tenant_id"] == TENANT
+        assert body["roles"] == ["ADMIN"]
+        assert (
+            client.get(
+                "/v1/ledger", headers={"Authorization": f"Bearer {body['token']}"}
+            ).status_code
+            == 200
+        )
+
+    def test_an_unknown_api_key_is_refused(self, client: TestClient) -> None:
+        response = client.post("/v1/auth/token", json={"api_key": "aeg_nope"})
+
+        assert response.status_code == 401
+
+    def test_a_revoked_key_can_no_longer_be_exchanged(
+        self, client: TestClient, platform: Platform
+    ) -> None:
+        key = generate_api_key()
+        with platform.database.session() as session:
+            repository = ApiKeyRepository(session)
+            repository.issue(TENANT, "console", hash_api_key(key))
+            repository.revoke(hash_api_key(key))
+
+        assert client.post("/v1/auth/token", json={"api_key": key}).status_code == 401
+
+    def test_runs_are_listed_newest_first_for_the_tenant_only(
+        self, client: TestClient, auth: dict[str, str], other_auth: dict[str, str]
+    ) -> None:
+        for subject in ("candidate-a", "candidate-b"):
+            client.post(
+                "/v1/runs",
+                json={
+                    "workflow": "talent_acquisition",
+                    "subject_id": subject,
+                    "context": CONTEXT,
+                },
+                headers=auth,
+            )
+
+        mine = client.get("/v1/runs", headers=auth).json()
+        theirs = client.get("/v1/runs", headers=other_auth).json()
+
+        assert {run["subject_id"] for run in mine} == {"candidate-a", "candidate-b"}
+        assert theirs == []
+
+    def test_a_workflow_view_carries_step_descriptions_and_irreversibility(
+        self, client: TestClient
+    ) -> None:
+        catalogue = client.get("/v1/workflows").json()
+        offer = next(
+            step for step in catalogue["talent_acquisition"]["steps"] if step["key"] == "offer"
+        )
+
+        assert offer["irreversible"]
+        assert offer["description"]
+        assert offer["requires"] == ["schedule"]
+
+    def test_a_step_reports_whether_it_can_be_retried(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        created = client.post(
+            "/v1/runs",
+            json={
+                "workflow": "talent_acquisition",
+                "subject_id": "candidate-retryable",
+                "context": CONTEXT,
+            },
+            headers=auth,
+        ).json()
+
+        assert all(not step["retryable"] for step in created["steps"])
+
+    def test_model_status_reports_nothing_trained_yet(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        body = client.get("/v1/attrition/model", headers=auth).json()
+
+        assert body["trained"] is False
+        assert body["algorithm"] is None
+
+    def test_model_status_reports_a_trained_model(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        employees, left = cohort()
+        client.post(
+            "/v1/attrition/train",
+            json={"employees": employees, "left": left},
+            headers=auth,
+        )
+
+        body = client.get("/v1/attrition/model", headers=auth).json()
+
+        assert body["trained"] is True
+        assert body["rows"] == len(employees)
+        assert body["feature_importance"]

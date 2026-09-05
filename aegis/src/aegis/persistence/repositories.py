@@ -77,6 +77,15 @@ class RunRepository:
         ).all()
         return tuple(self._rebuild(row, CATALOGUE[row.workflow]) for row in rows)
 
+    def for_tenant(self, tenant_id: str, limit: int = 100) -> tuple[WorkflowRun, ...]:
+        rows = self._session.scalars(
+            select(RunRow)
+            .where(RunRow.tenant_id == tenant_id)
+            .order_by(RunRow.created_at.desc())
+            .limit(limit)
+        ).all()
+        return tuple(self._rebuild(row, CATALOGUE[row.workflow]) for row in rows)
+
     def _rebuild(self, row: RunRow, definition: WorkflowDefinition) -> WorkflowRun:
         run = WorkflowRun(
             definition=definition,
@@ -229,6 +238,9 @@ class ModelRepository:
         row.payload = payload
         row.trained_at = datetime.now(UTC)
         self._session.flush()
+
+    def describe(self, tenant_id: str) -> ModelRow | None:
+        return self._session.get(ModelRow, tenant_id)
 
     def load(self, tenant_id: str) -> AttritionModel | None:
         row = self._session.get(ModelRow, tenant_id)

@@ -14,9 +14,13 @@ class StartRunRequest(BaseModel):
 class StepView(BaseModel):
     key: str
     status: str
+    description: str
+    action_type: str
+    irreversible: bool
     reasons: list[str]
     approver: str | None
     attempts: int
+    retryable: bool
 
 
 class RunView(BaseModel):
@@ -28,6 +32,42 @@ class RunView(BaseModel):
     steps: list[StepView]
     pending_approvals: list[str]
     context: dict[str, Any]
+
+
+class TokenRequest(BaseModel):
+    api_key: str = Field(min_length=1, max_length=200)
+
+
+class TokenResponse(BaseModel):
+    token: str
+    tenant_id: str
+    subject: str
+    roles: list[str]
+
+
+class WorkflowStepView(BaseModel):
+    key: str
+    action_type: str
+    description: str
+    requires: list[str]
+    requires_context: list[str]
+    irreversible: bool
+    optional: bool
+
+
+class WorkflowView(BaseModel):
+    name: str
+    steps: list[WorkflowStepView]
+    required_context: list[str]
+
+
+class ModelStatusView(BaseModel):
+    trained: bool
+    algorithm: str | None = None
+    rows: int | None = None
+    positives: int | None = None
+    trained_at: str | None = None
+    feature_importance: dict[str, float] = Field(default_factory=dict)
 
 
 class ApprovalRequest(BaseModel):

@@ -10,6 +10,9 @@ dependencies = [
     "scipy>=1.14",
 ]
 
+[project.scripts]
+aegis-provision = "aegis.cli:main"
+
 [project.optional-dependencies]
 api = [
     "fastapi>=0.115",

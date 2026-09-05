@@ -219,3 +219,34 @@ reverses cleanly.
 
 A web interface. The platform is API-first and every capability is reachable over HTTP, but
 there is no front end.
+
+
+## Console
+
+A web console lives in `apps/console`. It signs in with a tenant API key, exchanges it for a
+short-lived token, and drives the same API as everything else.
+
+Create a tenant and its first key:
+
+```
+docker compose exec api python -m aegis.cli "Acme Ltd" --posture conservative
+```
+
+Bring the whole platform up:
+
+```
+docker compose up -d
+```
+
+The console is then on `AEGIS_CONSOLE_PORT` (3000 by default) and the API on `AEGIS_PORT`.
+
+To run the console on its own against a local API:
+
+```
+cd apps/console
+npm ci
+AEGIS_API_URL=http://localhost:8000 npm run dev
+```
+
+The console covers the overview, workflow catalogue, starting runs, approving, rejecting and
+retrying steps, candidate screening, adverse impact, retention scoring and the audit trail.

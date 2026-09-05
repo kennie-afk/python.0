@@ -8,9 +8,15 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from aegis.agents.runtime import AgentRuntime, ApprovalError, MissingContextError, RetryError
+from aegis.agents.runtime import (
+    MAX_STEP_ATTEMPTS,
+    AgentRuntime,
+    ApprovalError,
+    MissingContextError,
+    RetryError,
+)
 from aegis.agents.tools import RecordingTool, ToolRegistry
-from aegis.agents.workflow import WorkflowRun
+from aegis.agents.workflow import StepStatus, WorkflowRun
 from aegis.anonymization.engine import AnonymizationEngine
 from aegis.api.schemas import (
     AdverseImpactRequest,
@@ -25,6 +31,7 @@ from aegis.api.schemas import (
     GroupImpactView,
     IntegrityView,
     LedgerEntryView,
+    ModelStatusView,
     RejectionRequest,
     RetryRequest,
     RunView,
@@ -33,8 +40,12 @@ from aegis.api.schemas import (
     ScreenRequest,
     StartRunRequest,
     StepView,
+    TokenRequest,
+    TokenResponse,
     TrainRequest,
     TrainResponse,
+    WorkflowStepView,
+    WorkflowView,
 )
 from aegis.attrition.features import EmployeeSnapshot
 from aegis.attrition.model import AttritionModel, ModelError
@@ -44,7 +55,7 @@ from aegis.bias.adverse_impact import (
     GroupOutcome,
     four_fifths_test,
 )
-from aegis.governance.actions import ActionType
+from aegis.governance.actions import IRREVERSIBLE_ACTIONS, ActionType
 from aegis.governance.gate import GovernanceGate
 from aegis.governance.policy import TenantPolicy
 from aegis.hr.workflows import CATALOGUE
@@ -273,13 +284,44 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/v1/auth/token")
+def exchange_key_for_token(request: TokenRequest, platform: PlatformDep) -> TokenResponse:
+    with platform.database.session() as session:
+        row = ApiKeyRepository(session).resolve(hash_api_key(request.api_key))
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="api key is not valid"
+            )
+        tenant_id, label, roles = row.tenant_id, row.label, list(row.roles)
+
+    try:
+        subject = f"key:{label}"
+        token = platform.tokens.mint(tenant_id, subject, frozenset(roles))
+    except AuthError as error:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)) from error
+
+    return TokenResponse(token=token, tenant_id=tenant_id, subject=subject, roles=roles)
+
+
 @app.get("/v1/workflows")
-def list_workflows() -> dict[str, dict[str, list[str]]]:
+def list_workflows() -> dict[str, WorkflowView]:
     return {
-        name: {
-            "steps": [step.key for step in wf.steps],
-            "required_context": list(wf.required_context),
-        }
+        name: WorkflowView(
+            name=name,
+            steps=[
+                WorkflowStepView(
+                    key=step.key,
+                    action_type=str(step.action_type),
+                    description=step.description,
+                    requires=list(step.requires),
+                    requires_context=list(step.requires_context),
+                    irreversible=step.action_type in IRREVERSIBLE_ACTIONS,
+                    optional=step.optional,
+                )
+                for step in wf.steps
+            ],
+            required_context=list(wf.required_context),
+        )
         for name, wf in CATALOGUE.items()
     }
 
@@ -295,9 +337,15 @@ def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
             StepView(
                 key=state.key,
                 status=str(state.status),
+                description=run.definition.step(state.key).description,
+                action_type=str(run.definition.step(state.key).action_type),
+                irreversible=run.definition.step(state.key).action_type in IRREVERSIBLE_ACTIONS,
                 reasons=list(state.reasons),
                 approver=state.approver,
                 attempts=state.attempts,
+                retryable=(
+                    state.status is StepStatus.FAILED and state.attempts < MAX_STEP_ATTEMPTS
+                ),
             )
             for state in run.steps.values()
         ],
@@ -321,6 +369,14 @@ def start_run(request: StartRunRequest, caller: PrincipalDep, platform: Platform
         runtime.advance(run)
         RunRepository(session).save(run)
         return _view(run, runtime)
+
+
+@app.get("/v1/runs")
+def list_runs(caller: PrincipalDep, platform: PlatformDep) -> list[RunView]:
+    with platform.database.session() as session:
+        runs = RunRepository(session).for_tenant(caller.tenant_id)
+        runtime = platform.runtime(session, caller.tenant_id)
+        return [_view(run, runtime) for run in runs]
 
 
 @app.get("/v1/runs/{run_id}")
@@ -532,6 +588,22 @@ def train_model(
         algorithm=report.algorithm,
         feature_importance=dict(report.feature_importance),
     )
+
+
+@app.get("/v1/attrition/model")
+def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView:
+    with platform.database.session() as session:
+        row = ModelRepository(session).describe(caller.tenant_id)
+        if row is None:
+            return ModelStatusView(trained=False)
+        return ModelStatusView(
+            trained=True,
+            algorithm=row.algorithm,
+            rows=row.rows,
+            positives=row.positives,
+            trained_at=row.trained_at.isoformat(),
+            feature_importance=dict(row.feature_importance),
+        )
 
 
 @app.post("/v1/attrition/score")
