@@ -102,7 +102,7 @@ class Platform:
         self.registry.transition("ranker", 1, Stage.LIVE, "promoted")
 
     def _training_rows(self) -> tuple[list[dict[str, float]], list[int]]:
-        as_of = datetime(2026, 4, 1, tzinfo=UTC)
+        as_of = self.built_at
         rows: list[dict[str, float]] = []
         labels: list[int] = []
 

@@ -1,52 +1,27 @@
-import Image from "next/image";
-import { AccountMenu } from "@/components/account-menu";
-import { SidebarNav, type NavSection } from "@/components/sidebar-nav";
-import { requireSession } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { Rail, type RailItem } from "@/components/rail";
+import { readSession } from "@/lib/session";
 
-const SECTIONS: NavSection[] = [
-  {
-    key: "operations",
-    label: "Operations",
-    items: [
-      { href: "/", label: "Overview" },
-      { href: "/runs", label: "Runs" },
-      { href: "/workflows", label: "Workflows" }
-    ]
-  },
-  {
-    key: "decisions",
-    label: "Decisions",
-    items: [
-      { href: "/screening", label: "Screening" },
-      { href: "/attrition", label: "Retention" }
-    ]
-  },
-  {
-    key: "assurance",
-    label: "Assurance",
-    items: [
-      { href: "/compliance", label: "Compliance" },
-      { href: "/ledger", label: "Audit trail" }
-    ]
-  }
+const ITEMS: RailItem[] = [
+  { href: "/", label: "Overview", icon: "home" },
+  { href: "/runs", label: "Runs", icon: "runs" },
+  { href: "/workflows", label: "Workflows", icon: "workflows" },
+  { href: "/screening", label: "Screening", icon: "screening" },
+  { href: "/attrition", label: "Retention", icon: "retention" },
+  { href: "/compliance", label: "Compliance", icon: "compliance" },
+  { href: "/ledger", label: "Audit", icon: "ledger" }
 ];
 
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const session = await readSession();
+  if (!session) {
+    redirect("/login");
+  }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] md:flex">
-        <div className="flex items-center gap-2.5 px-5 py-5">
-          <Image src="/mark.svg" alt="Aegis" width={300} height={256} className="h-8 w-auto" priority />
-          <span className="text-base font-semibold tracking-tight">Aegis</span>
-        </div>
-        <SidebarNav sections={SECTIONS} />
-        <div className="border-t border-[var(--color-line)] p-2">
-          <AccountMenu subject={session.subject} tenantId={session.tenantId} />
-        </div>
-      </aside>
-      <main className="flex-1 px-6 py-8 md:px-10">
+    <div className="flex min-h-screen bg-[var(--color-canvas)]">
+      <Rail items={ITEMS} />
+      <main className="flex-1 px-6 py-10 md:px-12 lg:px-16">
         <div className="mx-auto max-w-5xl">{children}</div>
       </main>
     </div>

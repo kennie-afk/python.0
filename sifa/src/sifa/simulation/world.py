@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
 
+from sifa.core.clock import now
 from sifa.features.schema import FeatureKind, FeatureSpec, FeatureView
 from sifa.features.store import FeatureStore
 from sifa.serving.pipeline import ItemCatalogue
@@ -52,7 +53,7 @@ def build_world(
     start: datetime | None = None,
 ) -> World:
     rng = np.random.default_rng(seed)
-    origin = start or datetime(2026, 4, 1, tzinfo=UTC)
+    origin = start or now()
 
     users = [f"u{i}" for i in range(n_users)]
     items = [f"i{i}" for i in range(n_items)]

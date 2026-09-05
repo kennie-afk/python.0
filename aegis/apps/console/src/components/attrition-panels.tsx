@@ -92,7 +92,7 @@ export function ScoreEmployee() {
                 chance of leaving within the horizon
               </span>
             </div>
-            <Meter value={score.probability} tone={score.needs_intervention ? "danger" : "brand"} />
+            <Meter value={score.probability} tone={score.needs_intervention ? "danger" : "accent"} />
 
             {score.drivers.length > 0 ? (
               <ul className="space-y-2">

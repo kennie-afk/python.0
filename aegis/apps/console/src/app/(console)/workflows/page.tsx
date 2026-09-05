@@ -63,7 +63,7 @@ export default async function WorkflowsPage() {
                           always needs a person
                         </span>
                       ) : null}
-                      {step.optional ? <Badge value="OPTIONAL" muted /> : null}
+                      {step.optional ? <Badge value="optional" /> : null}
                     </div>
                     <p className="mt-0.5 text-sm text-[var(--color-muted)]">{step.description}</p>
                     {step.requires_context.length > 0 ? (

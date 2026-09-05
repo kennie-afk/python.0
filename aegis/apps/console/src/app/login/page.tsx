@@ -10,7 +10,7 @@ export default async function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-[380px]">
         <div className="mb-8">
           <Image
             src="/logo-full.svg"
@@ -18,7 +18,7 @@ export default async function LoginPage() {
             width={720}
             height={200}
             priority
-            className="mb-5 h-11 w-auto"
+            className="mb-6 h-10 w-auto"
           />
           <p className="text-sm text-[var(--color-muted)]">
             Governed automation for hiring, onboarding and retention.

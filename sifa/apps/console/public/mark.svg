@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Sifa">
+  <defs>
+    <linearGradient id="s-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="60%" stop-color="#4338ca"/>
+      <stop offset="100%" stop-color="#2e2a8f"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="104" fill="none" stroke="url(#s-grad)" stroke-width="12" opacity="0.25"/>
+  <circle cx="66" cy="86" r="15" fill="url(#s-grad)"/>
+  <circle cx="66" cy="170" r="15" fill="url(#s-grad)"/>
+  <circle cx="128" cy="128" r="19" fill="#0d9488"/>
+  <circle cx="196" cy="70" r="13" fill="url(#s-grad)" opacity="0.55"/>
+  <circle cx="200" cy="140" r="17" fill="url(#s-grad)"/>
+  <circle cx="160" cy="198" r="12" fill="url(#s-grad)" opacity="0.45"/>
+  <path d="M66 86 L128 128 L200 140" fill="none" stroke="url(#s-grad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M66 170 L128 128 L196 70" fill="none" stroke="url(#s-grad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+  <path d="M128 128 L160 198" fill="none" stroke="#0d9488" stroke-width="7" stroke-linecap="round" opacity="0.8"/>
+</svg>
