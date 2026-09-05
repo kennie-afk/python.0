@@ -73,18 +73,22 @@ export function Stat({
           ? "text-[var(--color-danger)]"
           : "";
   return (
-    <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[0_1px_2px_rgba(12,42,48,0.04)] transition-shadow duration-150 hover:shadow-[0_2px_8px_rgba(12,42,48,0.08)]">
-      <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
-        {label}
-      </p>
-      <p
-        className={`mt-2 font-semibold tabular-nums break-words ${
-          value.length > 16 ? "text-lg" : value.length > 10 ? "text-2xl" : "text-3xl"
-        } ${accent}`}
-      >
-        {value}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-[var(--color-muted)]">{hint}</p> : null}
+    <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 shadow-[0_1px_2px_rgba(12,42,48,0.04)] transition-shadow duration-150 hover:shadow-[0_2px_8px_rgba(12,42,48,0.08)]">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="truncate text-xs font-medium uppercase tracking-wide text-[var(--color-muted)]">
+          {label}
+        </p>
+        <p
+          className={`shrink-0 font-semibold tabular-nums ${
+            value.length > 10 ? "text-lg" : "text-2xl"
+          } ${accent}`}
+        >
+          {value}
+        </p>
+      </div>
+      {hint ? (
+        <p className="mt-0.5 truncate text-xs text-[var(--color-faint)]">{hint}</p>
+      ) : null}
     </div>
   );
 }
