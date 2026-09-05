@@ -15,7 +15,7 @@ export function Rail({ items }: { items: RailItem[] }) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[92px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] md:flex">
+    <aside className="sticky top-0 hidden h-screen w-[92px] shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-rail)] md:flex">
       <div className="flex justify-center py-6">
         <Image src="/mark.svg" alt="Aegis" width={256} height={256} className="h-8 w-8" priority />
       </div>

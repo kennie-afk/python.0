@@ -143,7 +143,20 @@ const TONE: Record<string, string> = {
   CONTROL: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
   CONTROL_WINS: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
   TREATMENT: "bg-[var(--color-violet-soft)] text-[var(--color-violet)]",
-  EXPLORED: "bg-[var(--color-violet-soft)] text-[var(--color-violet)]"
+  EXPLORED: "bg-[var(--color-violet-soft)] text-[var(--color-violet)]",
+  ACTIVE: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  COMPLETED: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  SETTLED: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  LOW: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  OPEN: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  PENDING: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  MEDIUM: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  REVIEWING: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  HIGH: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  CRITICAL: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  SUSPENDED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  PLANNED: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+  LISTED: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
 };
 
 export function Badge({ value, dot }: { value: string; dot?: boolean }) {
