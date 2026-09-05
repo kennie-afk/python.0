@@ -38,7 +38,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <Image src="/mark.png" alt="TechMara" width={256} height={256} className="h-7 w-7" />
+          <Image src="/mark.svg" alt="Aegis" width={300} height={256} className="h-8 w-auto" priority />
           <span className="text-base font-semibold tracking-tight">Aegis</span>
         </div>
         <SidebarNav sections={SECTIONS} />

@@ -50,18 +50,18 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
   }
 
   return (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
+    <nav className="flex flex-1 flex-col overflow-y-auto px-3 pb-4">
       {sections.map((section) => {
         const holdsActive = section.items.some((item) => isActive(item.href));
         const open = !ready || !collapsed.includes(section.key) || holdsActive;
 
         return (
-          <div key={section.key}>
+          <div key={section.key} className="mt-5 first:mt-0">
             <button
               type="button"
               onClick={() => toggle(section.key)}
               aria-expanded={open}
-              className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-[var(--color-faint)] transition-colors duration-150 hover:bg-[var(--color-raised)] hover:text-[var(--color-muted)]"
+              className="flex w-full cursor-pointer items-center justify-between px-2 pb-1.5 text-[0.625rem] font-bold uppercase tracking-[0.16em] text-[var(--color-faint)] transition-colors duration-150 hover:text-[var(--color-muted)]"
             >
               {section.label}
               <svg
@@ -86,7 +86,7 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
               }`}
             >
               <div className="overflow-hidden">
-                <div className="mt-0.5 flex flex-col gap-0.5 pb-1">
+                <div className="ml-2 flex flex-col gap-0.5 border-l border-[var(--color-line)] pl-2.5">
                   {section.items.map((item) => {
                     const active = isActive(item.href);
                     return (
@@ -95,9 +95,9 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
                         href={item.href}
                         tabIndex={open ? undefined : -1}
                         aria-current={active ? "page" : undefined}
-                        className={`relative rounded-md px-3 py-1.5 text-sm transition-colors duration-150 ${
+                        className={`relative rounded-md px-2.5 py-1.5 text-sm transition-colors duration-150 ${
                           active
-                            ? "bg-[var(--color-brand-soft)] font-medium text-[var(--color-brand)] before:absolute before:bottom-1 before:left-0 before:top-1 before:w-0.5 before:rounded-full before:bg-[var(--color-brand)] before:content-['']"
+                            ? "bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand)] before:absolute before:-left-[0.6875rem] before:bottom-0.5 before:top-0.5 before:w-[2px] before:rounded-full before:bg-[var(--color-brand)] before:content-['']"
                             : "text-[var(--color-muted)] hover:bg-[var(--color-raised)] hover:text-[var(--color-ink)]"
                         }`}
                       >

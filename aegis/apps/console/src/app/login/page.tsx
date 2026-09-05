@@ -13,15 +13,14 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8">
           <Image
-            src="/logo-full.png"
-            alt="TechMara"
-            width={886}
-            height={337}
+            src="/logo-full.svg"
+            alt="Aegis"
+            width={720}
+            height={200}
             priority
-            className="mb-6 h-10 w-auto"
+            className="mb-5 h-11 w-auto"
           />
-          <h1 className="text-2xl font-semibold tracking-tight">Aegis</h1>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
+          <p className="text-sm text-[var(--color-muted)]">
             Governed automation for hiring, onboarding and retention.
           </p>
         </div>
