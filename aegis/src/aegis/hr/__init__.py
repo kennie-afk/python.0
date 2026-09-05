@@ -1,0 +1,15 @@
+from aegis.hr.workflows import (
+    CATALOGUE,
+    OFFBOARDING,
+    ONBOARDING,
+    RETENTION_INTERVENTION,
+    TALENT_ACQUISITION,
+)
+
+__all__ = [
+    "CATALOGUE",
+    "OFFBOARDING",
+    "ONBOARDING",
+    "RETENTION_INTERVENTION",
+    "TALENT_ACQUISITION",
+]
