@@ -114,7 +114,7 @@ uv run ruff check .
 uv run mypy
 ```
 
- tests. Passes `mypy --strict` and `ruff` with zero findings.
+192 tests. Passes `mypy --strict` and `ruff` with zero findings.
 
 ```bash
 uv run uvicorn aegis.api.app:app --reload
