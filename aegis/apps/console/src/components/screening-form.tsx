@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { SelectField } from "@/components/controls";
 import { SubmitButton } from "@/components/submit-button";
 import {
@@ -16,6 +16,30 @@ import { screenCandidate } from "@/lib/actions";
 import type { ScreeningState } from "@/lib/actions";
 
 const initial: ScreeningState = { error: null, message: null, result: null };
+
+interface FormValues {
+  full_name: string;
+  email: string;
+  national_id: string;
+  date_of_birth: string;
+  university: string;
+  years_experience: string;
+  skill_match: string;
+  gender: string;
+  requirement: string;
+}
+
+const EMPTY: FormValues = {
+  full_name: "",
+  email: "",
+  national_id: "",
+  date_of_birth: "",
+  university: "",
+  years_experience: "",
+  skill_match: "",
+  gender: "",
+  requirement: ""
+};
 
 const GENDERS = [
   { value: "female", label: "Female" },
@@ -33,7 +57,7 @@ const ROLES = [
   { value: "people operations lead", label: "People operations lead" }
 ];
 
-const EXAMPLE = {
+const EXAMPLE: FormValues = {
   full_name: "Amina Wanjiru",
   email: "amina@example.com",
   national_id: "31445902",
@@ -47,9 +71,21 @@ const EXAMPLE = {
 
 export function ScreeningForm() {
   const [state, action] = useActionState(screenCandidate, initial);
-  const [seed, setSeed] = useState(0);
-  const [filled, setFilled] = useState(false);
-  const values = filled ? EXAMPLE : null;
+  const [values, setValues] = useState<FormValues>(EMPTY);
+  const [generation, setGeneration] = useState(0);
+
+  const settled = useRef(false);
+
+  useEffect(() => {
+    if (!settled.current) {
+      settled.current = true;
+      return;
+    }
+    setGeneration((current) => current + 1);
+  }, [state]);
+
+  const change = (field: keyof FormValues) => (event: { target: { value: string } }) =>
+    setValues((current) => ({ ...current, [field]: event.target.value }));
 
   return (
     <div className="space-y-6">
@@ -57,42 +93,45 @@ export function ScreeningForm() {
         title="Screen an applicant"
         description="Identity is stripped before the model reads the record. It never sees a name, an ID or a date of birth."
       >
-        <form action={action} key={seed} className="space-y-5">
+        <form action={action} key={generation} className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name">
-              <input name="full_name" defaultValue={values?.full_name} className={inputClass} />
+              <input name="full_name" value={values.full_name} onChange={change("full_name")} className={inputClass} />
             </Field>
             <Field label="Email">
               <input
                 name="email"
                 type="email"
-                defaultValue={values?.email}
+                value={values.email}
+                onChange={change("email")}
                 className={inputClass}
               />
             </Field>
             <Field label="National ID">
-              <input name="national_id" defaultValue={values?.national_id} className={inputClass} />
+              <input name="national_id" value={values.national_id} onChange={change("national_id")} className={inputClass} />
             </Field>
             <Field label="Date of birth">
               <input
                 name="date_of_birth"
                 type="date"
-                defaultValue={values?.date_of_birth}
+                value={values.date_of_birth}
+                onChange={change("date_of_birth")}
                 className={inputClass}
               />
             </Field>
             <SelectField
-              key={`gender-${seed}`}
               label="Gender"
               name="gender"
               options={GENDERS}
-              defaultValue={values?.gender}
+              value={values.gender}
+              onChange={(next) => setValues((current) => ({ ...current, gender: next }))}
             />
             <Field label="University">
               <input
                 name="university"
                 list="universities"
-                defaultValue={values?.university}
+                value={values.university}
+                onChange={change("university")}
                 className={inputClass}
               />
               <datalist id="universities">
@@ -109,7 +148,8 @@ export function ScreeningForm() {
                 step="0.5"
                 min="0"
                 max="50"
-                defaultValue={values?.years_experience}
+                value={values.years_experience}
+                onChange={change("years_experience")}
                 className={inputClass}
               />
             </Field>
@@ -120,7 +160,8 @@ export function ScreeningForm() {
                 step="0.01"
                 min="0"
                 max="1"
-                defaultValue={values?.skill_match}
+                value={values.skill_match}
+                onChange={change("skill_match")}
                 className={inputClass}
               />
             </Field>
@@ -128,11 +169,11 @@ export function ScreeningForm() {
 
           <div className="max-w-md">
             <SelectField
-              key={`requirement-${seed}`}
               label="Requirement"
               name="requirement"
               options={ROLES}
-              defaultValue={values?.requirement}
+              value={values.requirement}
+              onChange={(next) => setValues((current) => ({ ...current, requirement: next }))}
               allowCustom
               hint="What the role actually needs."
             />
@@ -145,20 +186,14 @@ export function ScreeningForm() {
             <button
               type="button"
               className={secondaryButtonClass}
-              onClick={() => {
-                setFilled(true);
-                setSeed((current) => current + 1);
-              }}
+              onClick={() => setValues(EXAMPLE)}
             >
               Use an example
             </button>
             <button
               type="button"
               className={secondaryButtonClass}
-              onClick={() => {
-                setFilled(false);
-                setSeed((current) => current + 1);
-              }}
+              onClick={() => setValues(EMPTY)}
             >
               Clear
             </button>

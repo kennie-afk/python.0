@@ -114,7 +114,7 @@ def maximal_marginal_relevance(
     worst = matrix[first].copy()
 
     while len(order) < min(k, len(items)):
-        values = (1.0 - lambda_) * scores - lambda_ * worst
+        values = lambda_ * scores - (1.0 - lambda_) * worst
         values[~remaining] = -np.inf
         pick = int(np.argmax(values))
         if not np.isfinite(values[pick]):

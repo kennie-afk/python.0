@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge, Card, Notice, Select, Table, inputClass, rowClass } from "@/components/ui";
 import { checkAdverseImpact } from "@/lib/actions";
@@ -36,6 +36,24 @@ const MINIMUMS = [
 export function ImpactForm() {
   const [state, action] = useActionState(checkAdverseImpact, initial);
   const [comparison, setComparison] = useState("gender");
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [generation, setGeneration] = useState(0);
+
+  const settled = useRef(false);
+
+  useEffect(() => {
+    if (!settled.current) {
+      settled.current = true;
+      return;
+    }
+    setGeneration((current) => current + 1);
+  }, [state]);
+
+  const count = (field: string) => ({
+    value: counts[field] ?? "",
+    onChange: (event: { target: { value: string } }) =>
+      setCounts((current) => ({ ...current, [field]: event.target.value }))
+  });
   const groups = COMPARISONS[comparison]?.groups ?? [];
 
   return (
@@ -44,7 +62,7 @@ export function ImpactForm() {
         title="Adverse impact"
         description="The four-fifths rule: if a group is selected at less than 80 percent of the strongest group's rate, that is a flag."
       >
-        <form action={action} key={comparison} className="space-y-5">
+        <form action={action} key={`${comparison}-${generation}`} className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-3">
             <Select
               label="Compare by"
@@ -89,6 +107,7 @@ export function ImpactForm() {
                     type="number"
                     min="0"
                     placeholder="0"
+                    {...count(`${index}.selected`)}
                     className={`${inputClass} mt-0`}
                   />
                 </td>
@@ -98,6 +117,7 @@ export function ImpactForm() {
                     type="number"
                     min="1"
                     placeholder="0"
+                    {...count(`${index}.total`)}
                     className={`${inputClass} mt-0`}
                   />
                 </td>

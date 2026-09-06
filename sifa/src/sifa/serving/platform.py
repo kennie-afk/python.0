@@ -217,7 +217,7 @@ class Platform:
             "users": len(self.world.users),
             "items": len(self.world.items),
             "interactions": len(self.world.interactions),
-            "index_size": len(self.world.items),
+            "index_size": len(self.retriever.index),
             "embedding_dimension": self.tower.dimension,
             "ranker_auc": round(self.training.holdout_auc, 4),
             "ranker_calibrated": self.training.calibrated,

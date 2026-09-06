@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from sifa.core.errors import RegistryError
 from sifa.monitoring.drift import detect_drift, population_stability_index
 from sifa.monitoring.guard import GuardThresholds, RolloutGuard, ServingWindow
 from sifa.registry.models import ModelRegistry, Stage
-from sifa.core.errors import RegistryError
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -13,14 +14,23 @@ from fastapi.responses import JSONResponse
 from sifa.core.errors import SifaError
 from sifa.registry.models import Stage
 from sifa.serving.platform import Platform
+from sifa.simulation.world import World, build_world
 
 _platform: Platform | None = None
+
+
+def _world_from_environment() -> World:
+    return build_world(
+        n_users=int(os.environ.get("SIFA_USERS", "240")),
+        n_items=int(os.environ.get("SIFA_ITEMS", "600")),
+        seed=int(os.environ.get("SIFA_SEED", "101")),
+    )
 
 
 def get_platform() -> Iterator[Platform]:
     global _platform
     if _platform is None:
-        _platform = Platform()
+        _platform = Platform(world=_world_from_environment())
     yield _platform
 
 
@@ -96,6 +106,58 @@ def users(platform: PlatformDep, limit: int = Query(60, ge=1, le=240)) -> list[d
 @app.get("/v1/feed/{user_id}")
 def feed(user_id: str, platform: PlatformDep) -> dict[str, Any]:
     return platform.recommend(user_id)
+
+
+@app.get("/v1/retrieval/benchmark")
+def benchmark(
+    dimension: int = Query(48, ge=8, le=128),
+    k: int = Query(10, ge=1, le=50),
+    corpus: int = Query(16000, ge=1000, le=40000),
+) -> dict[str, Any]:
+    from sifa.index.hnsw import HnswConfig, HnswIndex
+
+    rng = np.random.default_rng(17)
+    vectors = rng.normal(size=(corpus, dimension)).astype(np.float32)
+    queries = rng.normal(size=(25, dimension)).astype(np.float32)
+
+    index = HnswIndex(dimension, HnswConfig(m=24, ef_construction=200, ef_search=64))
+    started = time.perf_counter()
+    for position, vector in enumerate(vectors):
+        index.add(f"n{position}", vector)
+    build_seconds = time.perf_counter() - started
+
+    started = time.perf_counter()
+    exact = [index.brute_force(query, k) for query in queries]
+    exact_ms = (time.perf_counter() - started) / len(queries) * 1000
+
+    curve: list[dict[str, Any]] = []
+    for ef in (32, 64, 128, 256):
+        started = time.perf_counter()
+        approximate = [index.search(query, k, ef=ef) for query in queries]
+        approximate_ms = (time.perf_counter() - started) / len(queries) * 1000
+
+        overlap = sum(
+            len({key for key, _ in a} & {key for key, _ in b})
+            for a, b in zip(approximate, exact, strict=True)
+        )
+
+        curve.append(
+            {
+                "ef_search": ef,
+                "recall": round(overlap / (len(queries) * k), 4),
+                "approximate_ms": round(approximate_ms, 3),
+                "speedup": round(exact_ms / approximate_ms, 2) if approximate_ms else 0.0,
+            }
+        )
+
+    return {
+        "corpus": corpus,
+        "dimension": dimension,
+        "k": k,
+        "build_seconds": round(build_seconds, 2),
+        "exhaustive_ms": round(exact_ms, 3),
+        "curve": curve,
+    }
 
 
 @app.get("/v1/retrieval/{user_id}")
@@ -282,56 +344,4 @@ def simulate(
         "latency_p95_ms": round(float(np.percentile(latencies, 95)), 2),
         "latency_p99_ms": round(float(np.percentile(latencies, 99)), 2),
         "experiment": platform.experiment_state().decision.value,
-    }
-
-
-@app.get("/v1/retrieval/benchmark")
-def benchmark(
-    dimension: int = Query(48, ge=8, le=128),
-    k: int = Query(10, ge=1, le=50),
-    corpus: int = Query(16000, ge=1000, le=40000),
-) -> dict[str, Any]:
-    from sifa.index.hnsw import HnswConfig, HnswIndex
-
-    rng = np.random.default_rng(17)
-    vectors = rng.normal(size=(corpus, dimension)).astype(np.float32)
-    queries = rng.normal(size=(25, dimension)).astype(np.float32)
-
-    index = HnswIndex(dimension, HnswConfig(m=24, ef_construction=200, ef_search=64))
-    started = time.perf_counter()
-    for position, vector in enumerate(vectors):
-        index.add(f"n{position}", vector)
-    build_seconds = time.perf_counter() - started
-
-    started = time.perf_counter()
-    exact = [index.brute_force(query, k) for query in queries]
-    exact_ms = (time.perf_counter() - started) / len(queries) * 1000
-
-    curve: list[dict[str, Any]] = []
-    for ef in (32, 64, 128, 256):
-        started = time.perf_counter()
-        approximate = [index.search(query, k, ef=ef) for query in queries]
-        approximate_ms = (time.perf_counter() - started) / len(queries) * 1000
-
-        overlap = sum(
-            len({key for key, _ in a} & {key for key, _ in b})
-            for a, b in zip(approximate, exact, strict=True)
-        )
-
-        curve.append(
-            {
-                "ef_search": ef,
-                "recall": round(overlap / (len(queries) * k), 4),
-                "approximate_ms": round(approximate_ms, 3),
-                "speedup": round(exact_ms / approximate_ms, 2) if approximate_ms else 0.0,
-            }
-        )
-
-    return {
-        "corpus": corpus,
-        "dimension": dimension,
-        "k": k,
-        "build_seconds": round(build_seconds, 2),
-        "exhaustive_ms": round(exact_ms, 3),
-        "curve": curve,
     }

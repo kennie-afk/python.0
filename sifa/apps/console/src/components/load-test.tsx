@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { idleSimulation, runLoadTest } from "@/lib/actions";
+import { runLoadTest } from "@/lib/actions";
+import { idleSimulation } from "@/lib/action-state";
 import { Card, Notice, Select, Stat, buttonClass } from "@/components/ui";
 
 function RunButton() {

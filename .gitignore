@@ -16,3 +16,13 @@ build/
 .mcp.json
 .cursor/
 .aider*
+
+# personal documents, never published
+*.pdf
+*.docx
+*Resume*
+*resume*
+*_CV*
+*Curriculum*
+
+*.tsbuildinfo

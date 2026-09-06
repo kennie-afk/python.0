@@ -10,6 +10,7 @@ export function SelectField({
   hint,
   value,
   defaultValue,
+  onChange,
   allowCustom
 }: {
   label: string;
@@ -18,13 +19,24 @@ export function SelectField({
   hint?: string;
   value?: string;
   defaultValue?: string;
+  onChange?: (value: string) => void;
   allowCustom?: boolean;
 }) {
-  const [selected, setSelected] = useState(value ?? defaultValue ?? "");
-  const custom = allowCustom && selected === "__custom__";
+  const [internal, setInternal] = useState(defaultValue ?? "");
+  const controlled = value !== undefined;
+  const selected = controlled ? value : internal;
+  const known = new Set(options.map((option) => option.value));
+  const custom = Boolean(allowCustom && selected && !known.has(selected));
   const choices = allowCustom
     ? [...options, { value: "__custom__", label: "Something else…" }]
     : options;
+
+  const update = (next: string) => {
+    if (!controlled) {
+      setInternal(next);
+    }
+    onChange?.(next);
+  };
 
   return (
     <div>
@@ -33,11 +45,18 @@ export function SelectField({
         hint={custom ? undefined : hint}
         name={custom ? undefined : name}
         options={choices}
-        value={selected}
-        onChange={(event) => setSelected(event.target.value)}
+        value={custom ? "__custom__" : selected}
+        onChange={(event) => update(event.target.value === "__custom__" ? " " : event.target.value)}
       />
       {custom ? (
-        <input name={name} autoFocus placeholder="Type it in" className={`${inputClass} mt-2`} />
+        <input
+          name={name}
+          autoFocus
+          value={selected.trim()}
+          onChange={(event) => update(event.target.value || " ")}
+          placeholder="Type it in"
+          className={`${inputClass} mt-2`}
+        />
       ) : null}
     </div>
   );

@@ -7,6 +7,41 @@ import re
 from aegis.reasoning.provider import Completion, Prompt
 
 _NUMBER = re.compile(r"([a-z_]+)\s*[:=]\s*(-?\d+(?:\.\d+)?)")
+_REQUIREMENT = re.compile(r"role_requirement:(.*)")
+_SPELLED = {
+    "one": 1.0,
+    "two": 2.0,
+    "three": 3.0,
+    "four": 4.0,
+    "five": 5.0,
+    "six": 6.0,
+    "seven": 7.0,
+    "eight": 8.0,
+    "nine": 9.0,
+    "ten": 10.0,
+}
+
+
+def _subject_lines(text: str) -> str:
+    marker = "candidate_brief:"
+    position = text.find(marker)
+    return text[position + len(marker) :] if position >= 0 else text
+
+
+def _threshold(text: str) -> float | None:
+    match = _REQUIREMENT.search(text)
+    if not match:
+        return None
+
+    requirement = match.group(1)
+    digits = re.search(r"(\d+(?:\.\d+)?)\s*\+?\s*(?:years|yrs)", requirement)
+    if digits:
+        return float(digits.group(1))
+
+    for word, value in _SPELLED.items():
+        if re.search(rf"\b{word}\b\s*\+?\s*(?:years|yrs)", requirement):
+            return value
+    return None
 
 
 class DeterministicModel:
@@ -21,15 +56,20 @@ class DeterministicModel:
     def complete(self, prompt: Prompt) -> Completion:
         self.calls.append(prompt)
 
+        lowered = prompt.user.lower()
         seed = int(hashlib.sha256(prompt.user.encode("utf-8")).hexdigest()[:8], 16)
-        signals = {key: float(value) for key, value in _NUMBER.findall(prompt.user.lower())}
+        signals = {
+            key: float(value)
+            for key, value in _NUMBER.findall(_subject_lines(lowered))
+            if key != "role_requirement"
+        }
 
-        score = self._score(signals, seed)
+        score = self._score(signals, seed, _threshold(lowered))
         payload = {
             "score": round(score, 4),
             "recommendation": self._recommendation(score),
             "rationale": self._rationale(signals, score),
-            "signals_considered": sorted(signals),
+            "signals_considered": sorted(self._evidential(signals, _threshold(lowered))),
         }
 
         return Completion(
@@ -39,18 +79,33 @@ class DeterministicModel:
             usage={"prompt_chars": len(prompt.user), "completion_chars": len(json.dumps(payload))},
         )
 
-    def _score(self, signals: dict[str, float], seed: int) -> float:
-        if not signals:
+    def _score(
+        self, signals: dict[str, float], seed: int, threshold: float | None = None
+    ) -> float:
+        evidential = self._evidential(signals, threshold)
+        if not evidential:
             return round((seed % 1000) / 1000.0, 4)
 
         weighted = 0.0
         total = 0.0
-        for key, value in signals.items():
+        for key, value in evidential.items():
             weight = 2.0 if "match" in key or "skill" in key else 1.0
-            weighted += min(max(value, 0.0), 1.0) * weight if value <= 1.0 else weight
+            weighted += value * weight
             total += weight
 
         return weighted / total if total else 0.0
+
+    @staticmethod
+    def _evidential(
+        signals: dict[str, float], threshold: float | None
+    ) -> dict[str, float]:
+        scored: dict[str, float] = {}
+        for key, value in signals.items():
+            if value <= 1.0:
+                scored[key] = min(max(value, 0.0), 1.0)
+            elif threshold and threshold > 0.0:
+                scored[key] = min(max(value / threshold, 0.0), 1.0)
+        return scored
 
     def _recommendation(self, score: float) -> str:
         if score >= 0.75:

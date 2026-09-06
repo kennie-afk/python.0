@@ -2,19 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { api, describeError } from "@/lib/api";
+import type { ActionState, SimulationState } from "@/lib/action-state";
 import type { SimulationResult } from "@/lib/types";
-
-export interface ActionState {
-  error: string | null;
-  message: string | null;
-}
-
-export interface SimulationState extends ActionState {
-  result: SimulationResult | null;
-}
-
-export const idleAction: ActionState = { error: null, message: null };
-export const idleSimulation: SimulationState = { error: null, message: null, result: null };
 
 export async function promoteCandidate(): Promise<ActionState> {
   try {

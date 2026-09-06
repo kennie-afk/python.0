@@ -120,7 +120,7 @@ class FeedPipeline:
                 ranked, self._catalogue.author, self._policy.max_per_author
             )
 
-        lambda_ = 0.0 if variant == "control" else self._policy.diversity_lambda
+        lambda_ = 1.0 if variant == "control" else 1.0 - self._policy.diversity_lambda
         pool = ranked[: max(self._config.return_k * 4, self._config.return_k)]
         diversified = maximal_marginal_relevance(
             pool,
@@ -141,7 +141,7 @@ class FeedPipeline:
             retrieved=len(candidates),
             latency_ms=elapsed,
             diagnostics={
-                "diversity_lambda": lambda_,
+                "diversity_lambda": 1.0 - lambda_,
                 "over_budget": elapsed > self._config.latency_budget_ms,
                 "distinct_topics": len(
                     {self._catalogue.topic.get(item.item_id, "") for item in final}
