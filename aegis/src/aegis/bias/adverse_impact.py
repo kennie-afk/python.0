@@ -9,16 +9,13 @@ from scipy import stats
 
 FOUR_FIFTHS = 0.80
 
-
 class ImpactVerdict(StrEnum):
     NO_ADVERSE_IMPACT = "NO_ADVERSE_IMPACT"
     ADVERSE_IMPACT = "ADVERSE_IMPACT"
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
-
 class AdverseImpactError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class GroupOutcome:
@@ -38,7 +35,6 @@ class GroupOutcome:
     def selection_rate(self) -> float:
         return self.selected / self.total
 
-
 @dataclass(frozen=True, slots=True)
 class GroupImpact:
     group: str
@@ -47,7 +43,6 @@ class GroupImpact:
     total: int
     selected: int
     adversely_impacted: bool
-
 
 @dataclass(frozen=True, slots=True)
 class AdverseImpactReport:
@@ -78,7 +73,6 @@ class AdverseImpactReport:
             f"{group.group} at {group.impact_ratio:.2f}" for group in self.failing_groups
         )
         return f"adverse impact against {failing} (four-fifths threshold {FOUR_FIFTHS:.2f})"
-
 
 def four_fifths_test(
     outcomes: Sequence[GroupOutcome],
@@ -143,7 +137,6 @@ def four_fifths_test(
         p_value=_significance(eligible),
     )
 
-
 def _significance(outcomes: Sequence[GroupOutcome]) -> float | None:
     table = [
         [outcome.selected for outcome in outcomes],
@@ -156,7 +149,6 @@ def _significance(outcomes: Sequence[GroupOutcome]) -> float | None:
     except ValueError:
         return None
     return float(result.pvalue)
-
 
 def selection_outcomes(groups: Sequence[str], selected: Sequence[bool]) -> tuple[GroupOutcome, ...]:
     if len(groups) != len(selected):

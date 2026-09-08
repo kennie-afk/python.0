@@ -9,13 +9,11 @@ from sifa.core.clock import ensure_utc
 from sifa.core.errors import LeakageError, SchemaError
 from sifa.features.schema import FeatureView
 
-
 @dataclass(frozen=True, slots=True)
 class FeatureRow:
     entity_id: str
     event_time: datetime
     values: dict[str, float]
-
 
 @dataclass(frozen=True, slots=True)
 class TrainingExample:
@@ -23,7 +21,6 @@ class TrainingExample:
     label_time: datetime
     label: float
     features: dict[str, float]
-
 
 class FeatureStore:
     def __init__(self, view: FeatureView) -> None:

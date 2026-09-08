@@ -22,14 +22,12 @@ from sifa.simulation.world import World, build_world
 
 BASELINE_SEED = 4242
 
-
 @dataclass(slots=True)
 class ExperimentCounters:
     control_trials: int = 0
     control_successes: int = 0
     treatment_trials: int = 0
     treatment_successes: int = 0
-
 
 @dataclass(slots=True)
 class Platform:

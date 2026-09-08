@@ -19,10 +19,8 @@ from aegis.auth import (
 SECRET = "a-signing-secret-that-is-long-enough-to-use"
 TENANT = "88888888-8888-8888-8888-888888888888"
 
-
 def service(**kwargs: object) -> TokenService:
-    return TokenService(secret=SECRET, **kwargs)  # type: ignore[arg-type]
-
+    return TokenService(secret=SECRET, **kwargs)
 
 class TestMintingAndVerifying:
     def test_a_minted_token_verifies_back_to_its_principal(self) -> None:
@@ -75,7 +73,6 @@ class TestMintingAndVerifying:
         with pytest.raises(ValueError, match="at least 32"):
             TokenService(secret="too-short")
 
-
 class TestRoles:
     def test_a_missing_role_is_reported_by_name(self) -> None:
         principal = Principal(tenant_id=TENANT, subject="user", roles=frozenset({"VIEWER"}))
@@ -92,7 +89,6 @@ class TestRoles:
         token = service().mint(TENANT, "user", frozenset({"ADMIN", "REVIEWER"}))
 
         assert service().verify(token).roles == frozenset({"ADMIN", "REVIEWER"})
-
 
 class TestApiKeys:
     def test_a_generated_key_is_prefixed_and_unguessable(self) -> None:
@@ -111,7 +107,6 @@ class TestApiKeys:
 
     def test_different_keys_hash_differently(self) -> None:
         assert hash_api_key(generate_api_key()) != hash_api_key(generate_api_key())
-
 
 class TestTenantClaimValidation:
     def test_a_token_carrying_a_malformed_tenant_is_rejected(self) -> None:

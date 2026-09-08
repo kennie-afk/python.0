@@ -4,7 +4,6 @@ import pytest
 
 from aegis.workforce import Scenario, SimulationError, compare, hires_required, simulate
 
-
 def scenario(**overrides: object) -> Scenario:
     base = {
         "name": "baseline",
@@ -15,8 +14,7 @@ def scenario(**overrides: object) -> Scenario:
         "monthly_demand": 0.0,
     }
     base.update(overrides)
-    return Scenario(**base)  # type: ignore[arg-type]
-
+    return Scenario(**base)
 
 class TestProjection:
     def test_a_stable_team_holds_its_headcount(self) -> None:
@@ -41,7 +39,6 @@ class TestProjection:
 
     def test_leavers_accumulate_across_the_horizon(self) -> None:
         assert simulate(scenario(monthly_attrition_rate=0.05), months=12).total_leavers > 0
-
 
 class TestRamp:
     def test_new_hires_are_not_immediately_productive(self) -> None:
@@ -84,7 +81,6 @@ class TestRamp:
 
         assert result.months[0].effective_capacity == pytest.approx(10.0)
 
-
 class TestDemand:
     def test_capacity_below_demand_is_a_shortfall(self) -> None:
         result = simulate(
@@ -100,7 +96,6 @@ class TestDemand:
 
         assert result.first_shortfall_month is None
         assert "capacity holds" in result.summary()
-
 
 class TestPlanning:
     def test_the_hires_needed_to_reach_a_target_are_computed(self) -> None:
@@ -134,7 +129,6 @@ class TestPlanning:
 
         assert len(results) == 2
         assert results[1].final_headcount > results[0].final_headcount
-
 
 class TestValidation:
     def test_an_impossible_attrition_rate_is_rejected(self) -> None:

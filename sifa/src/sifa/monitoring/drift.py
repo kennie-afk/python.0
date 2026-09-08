@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
-
 @dataclass(frozen=True, slots=True)
 class DriftReport:
     feature: str
@@ -16,14 +15,11 @@ class DriftReport:
     drifted: bool
     severity: str
 
-
 LOW_CARDINALITY = 12
-
 
 def _snap(values: np.ndarray, categories: np.ndarray) -> np.ndarray:
     positions = np.abs(values.reshape(-1, 1) - categories.reshape(1, -1)).argmin(axis=1)
     return np.asarray(positions, dtype=np.int64)
-
 
 def _discrete_psi(reference: np.ndarray, live: np.ndarray, categories: np.ndarray) -> float:
     reference_bins = np.bincount(_snap(reference, categories), minlength=len(categories))
@@ -33,7 +29,6 @@ def _discrete_psi(reference: np.ndarray, live: np.ndarray, categories: np.ndarra
     live_share = np.clip(live_bins / len(live), 1e-6, None)
 
     return float(np.sum((live_share - reference_share) * np.log(live_share / reference_share)))
-
 
 def population_stability_index(
     reference: Sequence[float], live: Sequence[float], bins: int = 10
@@ -61,7 +56,6 @@ def population_stability_index(
     live_share = np.clip(live_counts / len(live_array), 1e-6, None)
 
     return float(np.sum((live_share - reference_share) * np.log(live_share / reference_share)))
-
 
 def detect_drift(
     feature: str,

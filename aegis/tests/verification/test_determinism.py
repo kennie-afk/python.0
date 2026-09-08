@@ -13,15 +13,12 @@ from aegis.verification import (
     collapse_whitespace,
 )
 
-
 def constant(value: str):
     return lambda: value
-
 
 def cycling(values: list[str]):
     iterator = itertools.cycle(values)
     return lambda: next(iterator)
-
 
 class TestStableModels:
     def test_a_model_returning_one_answer_is_deterministic(self) -> None:
@@ -42,7 +39,6 @@ class TestStableModels:
         assert not report.is_deterministic
         assert report.modal_output == "APPROVE"
         assert report.divergence_examples() == ("REJECT",)
-
 
 class TestUnstableModels:
     def test_a_model_answering_differently_three_times_in_ten_is_unstable(self) -> None:
@@ -69,7 +65,6 @@ class TestUnstableModels:
 
         assert not report.passes
         assert report.distinct_outputs == 2
-
 
 class TestNormalization:
     def test_whitespace_differences_alone_do_not_count_as_divergence(self) -> None:
@@ -110,7 +105,6 @@ class TestNormalization:
 
         assert report.is_deterministic
 
-
 class TestFailureHandling:
     def test_an_exception_aborts_the_probe_by_default(self) -> None:
         def explode() -> str:
@@ -140,7 +134,6 @@ class TestFailureHandling:
 
         with pytest.raises(ProbeError, match="no successful executions"):
             DeterminismProbe(repetitions=3, tolerate_failures=True).probe("dead", explode)
-
 
 class TestConfiguration:
     def test_a_single_repetition_cannot_measure_determinism(self) -> None:

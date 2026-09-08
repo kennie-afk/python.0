@@ -5,7 +5,6 @@ from itertools import pairwise
 
 from aegis.ledger import GENESIS, DecisionLedger
 
-
 def ledger_with(count: int) -> DecisionLedger:
     ledger = DecisionLedger()
     for index in range(count):
@@ -21,7 +20,6 @@ def ledger_with(count: int) -> DecisionLedger:
             reasons=("matched the requisition skill model",),
         )
     return ledger
-
 
 class TestAppending:
     def test_an_empty_ledger_heads_at_genesis(self) -> None:
@@ -48,7 +46,6 @@ class TestAppending:
         assert report.intact
         assert report.entries_checked == 6
         assert report.broken_at is None
-
 
 class TestTamperEvidence:
     def test_editing_an_entry_is_detected_at_that_entry(self) -> None:
@@ -97,7 +94,6 @@ class TestTamperEvidence:
         ledger._entries[1], ledger._entries[2] = ledger._entries[2], ledger._entries[1]
 
         assert not ledger.verify().intact
-
 
 class TestQuerying:
     def test_entries_can_be_filtered_by_subject(self) -> None:

@@ -19,25 +19,19 @@ from aegis.ledger.record import DecisionLedger
 RationaleBuilder = Callable[[StepDefinition, WorkflowRun], str]
 ConfidenceSource = Callable[[StepDefinition, WorkflowRun], float | None]
 
-
 class ApprovalError(RuntimeError):
     pass
-
 
 class MissingContextError(ValueError):
     pass
 
-
 class RetryError(RuntimeError):
     pass
 
-
 MAX_STEP_ATTEMPTS = 3
-
 
 def _default_rationale(step: StepDefinition, run: WorkflowRun) -> str:
     return f"{step.description} for {run.subject_id} in workflow {run.definition.name}"
-
 
 class AgentRuntime:
     def __init__(

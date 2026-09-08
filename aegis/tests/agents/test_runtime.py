@@ -19,7 +19,6 @@ from aegis.ledger import DecisionLedger
 
 TENANT = UUID("22222222-2222-2222-2222-222222222222")
 
-
 def registry(*, failing: frozenset[ActionType] = frozenset()) -> ToolRegistry:
     tools = ToolRegistry()
     all_types = frozenset(ActionType)
@@ -29,7 +28,6 @@ def registry(*, failing: frozenset[ActionType] = frozenset()) -> ToolRegistry:
         tools.register(FailingTool(failing))
     return tools
 
-
 CONTEXT = {
     "recipient_email": "candidate@example.com",
     "subject": "Interview invitation",
@@ -37,7 +35,6 @@ CONTEXT = {
     "attendees": ["interviewer@example.com"],
     "starts_at": "2099-01-01T09:00:00+00:00",
 }
-
 
 def runtime(
     policy: TenantPolicy | None = None,
@@ -49,7 +46,6 @@ def runtime(
         tools=tools or registry(),
         ledger=ledger,
     )
-
 
 class TestTalentAcquisition:
     def test_the_pipeline_runs_autonomously_up_to_the_offer(self) -> None:
@@ -126,7 +122,6 @@ class TestTalentAcquisition:
         ]
         assert offer_calls == []
 
-
 class TestOnboarding:
     def test_a_background_check_parks_the_run_awaiting_the_provider(self) -> None:
         policy = TenantPolicy(tenant_id=str(TENANT), autonomous_actions=frozenset(ActionType))
@@ -174,7 +169,6 @@ class TestOnboarding:
 
         assert run.context["role"] == "engineer"
         assert run.context["verdict"] == "CLEAR"
-
 
 class TestFailureHandling:
     def test_a_tool_failure_fails_the_step_and_the_run(self) -> None:
@@ -228,7 +222,6 @@ class TestFailureHandling:
         recording = tools.resolve(ActionType.EXTEND_OFFER)
         assert isinstance(recording, RecordingTool)
         assert not any(call.action_type is ActionType.EXTEND_OFFER for call in recording.calls)
-
 
 class TestAuditTrail:
     def test_every_step_is_written_to_the_ledger(self) -> None:

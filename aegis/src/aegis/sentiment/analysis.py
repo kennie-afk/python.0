@@ -60,7 +60,6 @@ NEGATIVE = frozenset(
 
 NEGATORS = frozenset({"not", "never", "no", "hardly", "barely", "without"})
 
-
 class Aspect(StrEnum):
     LEADERSHIP = "LEADERSHIP"
     CULTURE = "CULTURE"
@@ -69,7 +68,6 @@ class Aspect(StrEnum):
     TOOLING = "TOOLING"
     CAREER_GROWTH = "CAREER_GROWTH"
     UNCATEGORISED = "UNCATEGORISED"
-
 
 ASPECT_TERMS: dict[Aspect, frozenset[str]] = {
     Aspect.LEADERSHIP: frozenset({"manager", "lead", "leadership", "director", "management"}),
@@ -84,16 +82,13 @@ ASPECT_TERMS: dict[Aspect, frozenset[str]] = {
     ),
 }
 
-
 class SuppressedError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Response:
     group: str
     text: str
-
 
 @dataclass(frozen=True, slots=True)
 class AspectScore:
@@ -104,7 +99,6 @@ class AspectScore:
     @property
     def negative(self) -> bool:
         return self.score < -0.15
-
 
 @dataclass(frozen=True, slots=True)
 class GroupSentiment:
@@ -122,7 +116,6 @@ class GroupSentiment:
     @property
     def concerns(self) -> tuple[AspectScore, ...]:
         return tuple(sorted((s for s in self.aspects if s.negative), key=lambda s: s.score))
-
 
 @dataclass(frozen=True, slots=True)
 class SentimentReport:
@@ -152,7 +145,6 @@ class SentimentReport:
             )
         return "; ".join(parts) if parts else "no reportable sentiment"
 
-
 def score_text(text: str) -> tuple[float, dict[Aspect, list[float]]]:
     tokens = TOKEN.findall(text.lower())
     per_aspect: dict[Aspect, list[float]] = defaultdict(list)
@@ -180,14 +172,12 @@ def score_text(text: str) -> tuple[float, dict[Aspect, list[float]]]:
     overall = statistics.fmean(polarities) if polarities else 0.0
     return overall, per_aspect
 
-
 def _aspect_for(tokens: Sequence[str], index: int) -> Aspect:
     window = tokens[max(0, index - 6) : index + 7]
     for aspect, terms in ASPECT_TERMS.items():
         if any(token in terms for token in window):
             return aspect
     return Aspect.UNCATEGORISED
-
 
 def analyse(
     responses: Sequence[Response], minimum_group_size: int = MINIMUM_GROUP_SIZE
@@ -240,7 +230,6 @@ def analyse(
         minimum_group_size=minimum_group_size,
     )
 
-
 @dataclass(frozen=True, slots=True)
 class EarlyWarning:
     group: str
@@ -251,7 +240,6 @@ class EarlyWarning:
     @property
     def drop(self) -> float:
         return self.previous - self.current
-
 
 def detect_early_warnings(
     previous: SentimentReport, current: SentimentReport, drop_threshold: float = 0.35

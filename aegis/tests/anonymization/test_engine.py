@@ -8,10 +8,8 @@ from aegis.anonymization import AnonymizationEngine, LeakageError
 
 SALT = "a-sufficiently-long-tenant-salt"
 
-
 def engine(reference_year: int = 2026) -> AnonymizationEngine:
     return AnonymizationEngine(salt=SALT, reference_year=reference_year)
-
 
 def candidate() -> dict[str, object]:
     return {
@@ -28,7 +26,6 @@ def candidate() -> dict[str, object]:
         "skills": ["python", "kubernetes"],
         "summary": "Reach me at amina@example.com or +254 712 345 678.",
     }
-
 
 class TestIdentityObfuscation:
     def test_identifying_attributes_never_reach_the_output(self) -> None:
@@ -72,7 +69,6 @@ class TestIdentityObfuscation:
         with pytest.raises(ValueError, match="at least 16"):
             AnonymizationEngine(salt="short")
 
-
 class TestPedigreeNeutralisation:
     def test_the_institution_name_is_replaced_with_an_opaque_label(self) -> None:
         result = engine().anonymize(candidate())
@@ -95,7 +91,6 @@ class TestPedigreeNeutralisation:
         result = engine().anonymize({**candidate(), "university": ""})
 
         assert result["university"] == "UNSPECIFIED"
-
 
 class TestTemporalFlattening:
     def test_a_graduation_date_becomes_a_duration(self) -> None:
@@ -121,7 +116,6 @@ class TestTemporalFlattening:
 
         assert result["started_years_ago"] is None
 
-
 class TestFreeTextScrubbing:
     def test_contact_details_in_prose_are_scrubbed(self) -> None:
         result = engine().anonymize(candidate())
@@ -138,7 +132,6 @@ class TestFreeTextScrubbing:
 
         assert result["summary"] == "Backend engineer."
         assert "summary" not in result.report.scrubbed_free_text
-
 
 class TestLeakageGuard:
     def test_a_payload_still_carrying_protected_data_is_refused(self) -> None:

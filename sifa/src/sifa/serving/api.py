@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 import numpy as np
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from sifa.core.errors import SifaError
+from sifa.serving.auth import require_api_key
 from sifa.registry.models import Stage
 from sifa.serving.platform import Platform
 from sifa.simulation.world import World, build_world
 
 _platform: Platform | None = None
-
+_platform_lock = threading.Lock()
 
 def _world_from_environment() -> World:
     return build_world(
@@ -26,22 +28,20 @@ def _world_from_environment() -> World:
         seed=int(os.environ.get("SIFA_SEED", "101")),
     )
 
-
 def get_platform() -> Iterator[Platform]:
     global _platform
     if _platform is None:
-        _platform = Platform(world=_world_from_environment())
+        with _platform_lock:
+            if _platform is None:
+                _platform = Platform(world=_world_from_environment())
     yield _platform
 
-
 PlatformDep = Annotated[Platform, Depends(get_platform)]
-
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> Any:
     get_platform().__next__()
     yield
-
 
 app = FastAPI(
     title="Sifa",
@@ -50,14 +50,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+def allowed_origins() -> list[str]:
+    raw = os.environ.get("SIFA_CORS_ORIGINS", "")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Accept", "Content-Type", "X-Api-Key"],
 )
 
+v1 = APIRouter(prefix="/v1", dependencies=[Depends(require_api_key)])
 
 @app.exception_handler(SifaError)
 async def sifa_error_handler(_: object, error: SifaError) -> JSONResponse:
@@ -66,13 +71,11 @@ async def sifa_error_handler(_: object, error: SifaError) -> JSONResponse:
         content={"code": "sifa-error", "detail": str(error)},
     )
 
-
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
-
-@app.get("/v1/overview")
+@v1.get("/overview")
 def overview(platform: PlatformDep) -> dict[str, Any]:
     verdict = platform.guard_verdict()
     sequential = platform.experiment_state()
@@ -97,18 +100,15 @@ def overview(platform: PlatformDep) -> dict[str, Any]:
         },
     }
 
-
-@app.get("/v1/users")
+@v1.get("/users")
 def users(platform: PlatformDep, limit: int = Query(60, ge=1, le=240)) -> list[dict[str, Any]]:
     return platform.users(limit)
 
-
-@app.get("/v1/feed/{user_id}")
+@v1.get("/feed/{user_id}")
 def feed(user_id: str, platform: PlatformDep) -> dict[str, Any]:
     return platform.recommend(user_id)
 
-
-@app.get("/v1/retrieval/benchmark")
+@v1.get("/retrieval/benchmark")
 def benchmark(
     dimension: int = Query(48, ge=8, le=128),
     k: int = Query(10, ge=1, le=50),
@@ -159,8 +159,7 @@ def benchmark(
         "curve": curve,
     }
 
-
-@app.get("/v1/retrieval/{user_id}")
+@v1.get("/retrieval/{user_id}")
 def retrieval(
     user_id: str, platform: PlatformDep, k: int = Query(20, ge=1, le=100)
 ) -> dict[str, Any]:
@@ -204,8 +203,7 @@ def retrieval(
         ],
     }
 
-
-@app.get("/v1/model")
+@v1.get("/model")
 def model(platform: PlatformDep) -> dict[str, Any]:
     report = platform.training
     importance = sorted(report.importance.items(), key=lambda pair: pair[1], reverse=True)
@@ -227,8 +225,7 @@ def model(platform: PlatformDep) -> dict[str, Any]:
         },
     }
 
-
-@app.get("/v1/registry")
+@v1.get("/registry")
 def registry(platform: PlatformDep) -> list[dict[str, Any]]:
     return [
         {
@@ -246,8 +243,7 @@ def registry(platform: PlatformDep) -> list[dict[str, Any]]:
         for version in platform.registry.versions("ranker")
     ]
 
-
-@app.post("/v1/registry/promote")
+@v1.post("/registry/promote")
 def promote(platform: PlatformDep) -> dict[str, Any]:
     versions = platform.registry.versions("ranker")
     candidate = platform.registry.register(
@@ -266,8 +262,7 @@ def promote(platform: PlatformDep) -> dict[str, Any]:
         "previous_versions": len(versions),
     }
 
-
-@app.post("/v1/registry/rollback")
+@v1.post("/registry/rollback")
 def rollback(platform: PlatformDep) -> dict[str, Any]:
     rolled = platform.registry.rollback("ranker", "operator asked for a rollback")
     live = platform.registry.live("ranker")
@@ -276,8 +271,7 @@ def rollback(platform: PlatformDep) -> dict[str, Any]:
         "now_live": live.label if live else None,
     }
 
-
-@app.get("/v1/drift")
+@v1.get("/drift")
 def drift(
     platform: PlatformDep, shift: float = Query(0.0, ge=0.0, le=3.0)
 ) -> list[dict[str, Any]]:
@@ -293,8 +287,7 @@ def drift(
         for report in platform.drift(shift)
     ]
 
-
-@app.get("/v1/experiment")
+@v1.get("/experiment")
 def experiment(platform: PlatformDep) -> dict[str, Any]:
     result = platform.experiment_state()
     return {
@@ -321,8 +314,7 @@ def experiment(platform: PlatformDep) -> dict[str, Any]:
         "samples": result.samples,
     }
 
-
-@app.post("/v1/simulate")
+@v1.post("/simulate")
 def simulate(
     platform: PlatformDep, requests: int = Query(200, ge=1, le=2000)
 ) -> dict[str, Any]:
@@ -345,3 +337,5 @@ def simulate(
         "latency_p99_ms": round(float(np.percentile(latencies, 99)), 2),
         "experiment": platform.experiment_state().decision.value,
     }
+
+app.include_router(v1)

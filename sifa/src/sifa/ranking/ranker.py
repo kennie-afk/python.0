@@ -9,7 +9,6 @@ from sklearn.linear_model import LogisticRegression
 from sifa.core.errors import NotTrainedError
 from sifa.core.types import Candidate, ScoredItem
 
-
 @dataclass(frozen=True, slots=True)
 class RankerConfig:
     feature_order: tuple[str, ...]
@@ -25,7 +24,6 @@ class RankerConfig:
         if not 0.0 < self.calibration_fraction < 0.9:
             raise ValueError("calibration_fraction must sit between 0 and 0.9")
 
-
 @dataclass(frozen=True, slots=True)
 class TrainingReport:
     rows: int
@@ -34,7 +32,6 @@ class TrainingReport:
     importance: dict[str, float]
     calibrated: bool
     holdout_auc: float
-
 
 class PlattCalibrator:
     def __init__(self) -> None:
@@ -55,7 +52,6 @@ class PlattCalibrator:
     @property
     def is_fitted(self) -> bool:
         return self._model is not None
-
 
 class LearningToRank:
     def __init__(self, config: RankerConfig) -> None:
@@ -158,7 +154,6 @@ class LearningToRank:
         ]
         ranked.sort(key=lambda item: item.score, reverse=True)
         return ranked
-
 
 def _roc_auc(scores: np.ndarray, labels: np.ndarray) -> float:
     positives = scores[labels == 1]

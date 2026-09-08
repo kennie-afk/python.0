@@ -11,7 +11,6 @@ from aegis.skills.taxonomy import (
     TaxonomyError,
 )
 
-
 @dataclass(frozen=True, slots=True)
 class OpenRole:
     role_id: str
@@ -22,7 +21,6 @@ class OpenRole:
     def __post_init__(self) -> None:
         if not self.requirements:
             raise TaxonomyError(f"role {self.role_id} has no skill requirements to match against")
-
 
 @dataclass(frozen=True, slots=True)
 class SkillDelta:
@@ -37,7 +35,6 @@ class SkillDelta:
     @property
     def levels_short(self) -> int:
         return max(0, int(self.required) - int(self.held))
-
 
 @dataclass(frozen=True, slots=True)
 class MobilityMatch:
@@ -61,7 +58,6 @@ class MobilityMatch:
         return tuple(
             f"{delta.skill}: {delta.held.name} to {delta.required.name}" for delta in ordered
         )
-
 
 def match_role(
     profile: SkillProfile, role: OpenRole, taxonomy: SkillTaxonomy | None = None
@@ -100,7 +96,6 @@ def match_role(
         missing=tuple(missing),
     )
 
-
 def rank_roles(
     profile: SkillProfile,
     roles: Sequence[OpenRole],
@@ -111,7 +106,6 @@ def rank_roles(
     qualifying = [match for match in matches if match.score >= minimum_score]
     qualifying.sort(key=lambda match: (match.ready_now, match.score), reverse=True)
     return tuple(qualifying)
-
 
 def internal_candidates(
     profiles: Sequence[SkillProfile],

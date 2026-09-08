@@ -3,7 +3,6 @@ from __future__ import annotations
 from aegis.governance.actions import IRREVERSIBLE_ACTIONS, ProposedAction
 from aegis.governance.policy import Decision, TenantPolicy, Verdict
 
-
 class GovernanceGate:
     def __init__(self, policy: TenantPolicy) -> None:
         self._policy = policy

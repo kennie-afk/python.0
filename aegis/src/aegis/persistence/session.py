@@ -12,10 +12,8 @@ from aegis.persistence.models import Base
 
 DEFAULT_URL = "postgresql+psycopg://aegis:aegis@localhost:5432/aegis"
 
-
 def database_url() -> str:
     return os.environ.get("AEGIS_DATABASE_URL", DEFAULT_URL)
-
 
 def build_engine(url: str | None = None, echo: bool = False) -> Engine:
     resolved = url or database_url()
@@ -31,7 +29,6 @@ def build_engine(url: str | None = None, echo: bool = False) -> Engine:
         )
 
     return create_engine(resolved, echo=echo, future=True, pool_pre_ping=True)
-
 
 class Database:
     def __init__(self, url: str | None = None, echo: bool = False) -> None:

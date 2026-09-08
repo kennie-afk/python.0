@@ -10,16 +10,13 @@ from scipy import stats
 
 EPSILON = 1e-6
 
-
 class DriftSeverity(StrEnum):
     STABLE = "STABLE"
     MODERATE = "MODERATE"
     SIGNIFICANT = "SIGNIFICANT"
 
-
 class DriftError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class DriftReport:
@@ -40,14 +37,12 @@ class DriftReport:
         ranked = sorted(self.contributions, key=lambda item: item[1], reverse=True)
         return tuple(ranked[:limit])
 
-
 def _severity(statistic: float, moderate: float, significant: float) -> DriftSeverity:
     if statistic >= significant:
         return DriftSeverity.SIGNIFICANT
     if statistic >= moderate:
         return DriftSeverity.MODERATE
     return DriftSeverity.STABLE
-
 
 def population_stability_index(
     feature: str,
@@ -102,7 +97,6 @@ def population_stability_index(
         contributions=contributions,
     )
 
-
 def categorical_drift(
     feature: str,
     baseline: Sequence[str],
@@ -141,7 +135,6 @@ def categorical_drift(
         candidate_size=candidate_total,
         contributions=tuple(contributions),
     )
-
 
 def distribution_shift(
     feature: str,

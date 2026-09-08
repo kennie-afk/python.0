@@ -5,7 +5,6 @@ from typing import Any, Protocol
 
 from aegis.governance.actions import ActionType, ProposedAction
 
-
 @dataclass(frozen=True, slots=True)
 class ToolResult:
     succeeded: bool
@@ -20,12 +19,10 @@ class ToolResult:
     def failed(cls, detail: str) -> ToolResult:
         return cls(succeeded=False, detail=detail)
 
-
 class Tool(Protocol):
     def handles(self) -> frozenset[ActionType]: ...
 
     def execute(self, action: ProposedAction) -> ToolResult: ...
-
 
 class ToolRegistry:
     def __init__(self) -> None:
@@ -44,7 +41,6 @@ class ToolRegistry:
     def registered(self) -> frozenset[ActionType]:
         return frozenset(self._tools)
 
-
 class RecordingTool:
     def __init__(self, action_types: frozenset[ActionType], output: dict[str, Any] | None = None):
         self._action_types = action_types
@@ -57,7 +53,6 @@ class RecordingTool:
     def execute(self, action: ProposedAction) -> ToolResult:
         self.calls.append(action)
         return ToolResult(succeeded=True, output=dict(self._output))
-
 
 class FailingTool:
     def __init__(self, action_types: frozenset[ActionType], detail: str = "upstream unavailable"):

@@ -8,14 +8,11 @@ from uuid import UUID
 
 import jwt
 
-
 class AuthError(Exception):
     pass
 
-
 class TokenExpiredError(AuthError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Principal:
@@ -39,7 +36,6 @@ class Principal:
     def require_role(self, role: str) -> None:
         if not self.has_role(role):
             raise AuthError(f"principal {self.subject!r} lacks the required role {role!r}")
-
 
 class TokenService:
     def __init__(
@@ -97,10 +93,8 @@ class TokenService:
             roles=frozenset(str(role) for role in claims.get("roles", [])),
         )
 
-
 def generate_api_key() -> str:
     return "aeg_" + secrets.token_urlsafe(32)
-
 
 def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()

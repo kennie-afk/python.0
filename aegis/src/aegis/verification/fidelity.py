@@ -20,12 +20,10 @@ DRIFT_WEIGHT: dict[DriftSeverity, float] = {
     DriftSeverity.SIGNIFICANT: 0.0,
 }
 
-
 class Gate(StrEnum):
     PASS = "PASS"
     WARN = "WARN"
     BLOCK = "BLOCK"
-
 
 @dataclass(frozen=True, slots=True)
 class FidelityReport:
@@ -38,7 +36,6 @@ class FidelityReport:
     @property
     def deployable(self) -> bool:
         return self.gate is not Gate.BLOCK
-
 
 class FidelityScorer:
     def __init__(self, warn_below: float = 0.90, block_below: float = 0.70) -> None:

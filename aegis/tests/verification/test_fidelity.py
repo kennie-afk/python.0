@@ -12,7 +12,6 @@ from aegis.verification import (
 )
 from aegis.verification.determinism import DeterminismReport
 
-
 def determinism(stability: Stability, case: str = "screening") -> DeterminismReport:
     return DeterminismReport(
         case=case,
@@ -23,7 +22,6 @@ def determinism(stability: Stability, case: str = "screening") -> DeterminismRep
         stability=stability,
     )
 
-
 def drift(severity: DriftSeverity, feature: str = "tenure") -> DriftReport:
     return DriftReport(
         feature=feature,
@@ -33,7 +31,6 @@ def drift(severity: DriftSeverity, feature: str = "tenure") -> DriftReport:
         baseline_size=1000,
         candidate_size=1000,
     )
-
 
 class TestGating:
     def test_a_deterministic_undrifted_system_passes(self) -> None:
@@ -67,7 +64,6 @@ class TestGating:
         assert report.gate is Gate.WARN
         assert report.deployable
 
-
 class TestWeighting:
     def test_determinism_carries_more_weight_than_drift(self) -> None:
         scorer = FidelityScorer()
@@ -89,7 +85,6 @@ class TestWeighting:
 
         assert 0.0 < report.determinism_score < 1.0
         assert report.gate is Gate.PASS
-
 
 class TestFindings:
     def test_every_failing_case_is_named_in_the_findings(self) -> None:
@@ -113,7 +108,6 @@ class TestFindings:
     def test_inverted_gate_thresholds_are_rejected(self) -> None:
         with pytest.raises(ValueError, match="thresholds"):
             FidelityScorer(warn_below=0.5, block_below=0.9)
-
 
 class TestEndToEnd:
     def test_a_live_probe_feeds_straight_into_the_gate(self) -> None:

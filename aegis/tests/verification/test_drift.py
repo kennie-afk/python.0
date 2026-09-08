@@ -13,10 +13,8 @@ from aegis.verification import (
 
 RNG = np.random.default_rng(20260905)
 
-
 def normal(mean: float, size: int = 1000, sigma: float = 1.0) -> list[float]:
     return list(RNG.normal(mean, sigma, size))
-
 
 class TestNumericDrift:
     def test_a_resampled_population_shows_no_drift(self) -> None:
@@ -55,7 +53,6 @@ class TestNumericDrift:
         with pytest.raises(DriftError, match="at least"):
             population_stability_index("tenure", [1.0, 2.0], [1.0])
 
-
 class TestCategoricalDrift:
     def test_an_unchanged_mix_shows_no_drift(self) -> None:
         baseline = ["ENGINEERING"] * 60 + ["SALES"] * 40
@@ -90,7 +87,6 @@ class TestCategoricalDrift:
     def test_empty_samples_are_an_error(self) -> None:
         with pytest.raises(DriftError, match="non-empty"):
             categorical_drift("department", [], ["ENGINEERING"])
-
 
 class TestDistributionShift:
     def test_samples_from_one_population_are_not_shifted(self) -> None:

@@ -17,7 +17,6 @@ from aegis.integrations import (
 
 TENANT = UUID("99999999-9999-9999-9999-999999999999")
 
-
 def action(action_type: ActionType, **payload: object) -> ProposedAction:
     return ProposedAction(
         action_type=action_type,
@@ -28,10 +27,8 @@ def action(action_type: ActionType, **payload: object) -> ProposedAction:
         payload=dict(payload),
     )
 
-
 def soon(hours: int = 24) -> str:
     return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
-
 
 class TestEmail:
     def test_a_well_formed_message_is_delivered(self) -> None:
@@ -91,7 +88,6 @@ class TestEmail:
 
     def test_the_tool_declares_only_the_action_it_handles(self) -> None:
         assert EmailTool(MockEmailTransport()).handles() == frozenset({ActionType.SEND_MESSAGE})
-
 
 class TestCalendar:
     def test_a_free_slot_is_booked(self) -> None:

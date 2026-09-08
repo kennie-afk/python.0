@@ -21,12 +21,10 @@ _SPELLED = {
     "ten": 10.0,
 }
 
-
 def _subject_lines(text: str) -> str:
     marker = "candidate_brief:"
     position = text.find(marker)
     return text[position + len(marker) :] if position >= 0 else text
-
 
 def _threshold(text: str) -> float | None:
     match = _REQUIREMENT.search(text)
@@ -42,7 +40,6 @@ def _threshold(text: str) -> float | None:
         if re.search(rf"\b{word}\b\s*\+?\s*(?:years|yrs)", requirement):
             return value
     return None
-
 
 class DeterministicModel:
     def __init__(self, name: str = "aegis-deterministic-v1") -> None:
@@ -122,7 +119,6 @@ class DeterministicModel:
             f"weighted {len(signals)} signals to {score:.2f}; "
             f"{strongest[0]} at {strongest[1]:.2f} carried the most weight"
         )
-
 
 class ScriptedModel:
     def __init__(self, responses: list[str], name: str = "scripted") -> None:

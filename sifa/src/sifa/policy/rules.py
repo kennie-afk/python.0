@@ -9,7 +9,6 @@ import numpy as np
 
 from sifa.core.types import ScoredItem
 
-
 @dataclass(frozen=True, slots=True)
 class PolicyConfig:
     diversity_lambda: float = 0.3
@@ -24,12 +23,10 @@ class PolicyConfig:
         if self.freshness_half_life <= timedelta(0):
             raise ValueError("the freshness half life must be positive")
 
-
 def freshness_decay(age: timedelta, half_life: timedelta) -> float:
     if age <= timedelta(0):
         return 1.0
     return float(math.pow(0.5, age / half_life))
-
 
 def apply_freshness(
     items: list[ScoredItem],
@@ -63,7 +60,6 @@ def apply_freshness(
     adjusted.sort(key=lambda item: item.score, reverse=True)
     return adjusted
 
-
 def similarity_matrix(
     items: list[ScoredItem], vectors: dict[str, np.ndarray]
 ) -> np.ndarray:
@@ -86,7 +82,6 @@ def similarity_matrix(
             matrix[row] = np.asarray(vector, dtype=np.float32) / norm
 
     return matrix @ matrix.T
-
 
 def maximal_marginal_relevance(
     items: list[ScoredItem],
@@ -139,7 +134,6 @@ def maximal_marginal_relevance(
 
     return selected
 
-
 def cap_per_attribute(
     items: list[ScoredItem], attribute: dict[str, str], limit: int
 ) -> list[ScoredItem]:
@@ -154,7 +148,6 @@ def cap_per_attribute(
         kept.append(item)
 
     return kept
-
 
 def cosine_similarity_lookup(
     vectors: dict[str, np.ndarray],

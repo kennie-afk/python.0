@@ -5,7 +5,6 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-
 class ActionType(StrEnum):
     SCORE_CANDIDATE = "SCORE_CANDIDATE"
     SHORTLIST_CANDIDATE = "SHORTLIST_CANDIDATE"
@@ -31,7 +30,6 @@ class ActionType(StrEnum):
     ADJUST_COMPENSATION = "ADJUST_COMPENSATION"
     GRANT_EQUITY = "GRANT_EQUITY"
 
-
 IRREVERSIBLE_ACTIONS: frozenset[ActionType] = frozenset(
     {
         ActionType.EXTEND_OFFER,
@@ -44,7 +42,6 @@ IRREVERSIBLE_ACTIONS: frozenset[ActionType] = frozenset(
     }
 )
 
-
 class RestrictedDomain(StrEnum):
     COMPENSATION_BAND = "COMPENSATION_BAND"
     EQUITY_GRANT = "EQUITY_GRANT"
@@ -52,12 +49,10 @@ class RestrictedDomain(StrEnum):
     DISCIPLINARY_RECORD = "DISCIPLINARY_RECORD"
     IMMIGRATION_STATUS = "IMMIGRATION_STATUS"
 
-
 DOMAIN_BY_ACTION: dict[ActionType, RestrictedDomain] = {
     ActionType.ADJUST_COMPENSATION: RestrictedDomain.COMPENSATION_BAND,
     ActionType.GRANT_EQUITY: RestrictedDomain.EQUITY_GRANT,
 }
-
 
 @dataclass(frozen=True, slots=True)
 class ProposedAction:

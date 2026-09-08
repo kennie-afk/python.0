@@ -22,7 +22,6 @@ from sifa.policy.rules import (
 from sifa.ranking.ranker import LearningToRank
 from sifa.retrieval.two_tower import Retriever
 
-
 @dataclass(frozen=True, slots=True)
 class ServingConfig:
     retrieve_k: int = 200
@@ -36,14 +35,12 @@ class ServingConfig:
         if not 0.0 <= self.explore_fraction < 0.5:
             raise ValueError("explore_fraction must sit between 0 and 0.5")
 
-
 @dataclass(frozen=True, slots=True)
 class ItemCatalogue:
     vectors: dict[str, np.ndarray]
     published_at: dict[str, datetime]
     author: dict[str, str]
     topic: dict[str, str]
-
 
 class FeedPipeline:
     def __init__(

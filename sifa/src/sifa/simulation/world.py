@@ -33,7 +33,6 @@ ITEM_VIEW = FeatureView(
     ttl=timedelta(days=30),
 )
 
-
 @dataclass(frozen=True, slots=True)
 class World:
     users: list[str]
@@ -44,7 +43,6 @@ class World:
     user_features: FeatureStore
     item_features: FeatureStore
     labels: list[tuple[str, str, int, dict[str, float]]]
-
 
 def build_world(
     n_users: int = 240,

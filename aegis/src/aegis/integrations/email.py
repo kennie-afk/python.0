@@ -12,10 +12,8 @@ from aegis.governance.actions import ActionType, ProposedAction
 
 ADDRESS = re.compile(r"^[^@\s]+@[^@\s.]+\.[^@\s]+$")
 
-
 class EmailError(RuntimeError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class SentEmail:
@@ -23,10 +21,8 @@ class SentEmail:
     subject: str
     body: str
 
-
 class EmailTransport(Protocol):
     def deliver(self, message: SentEmail) -> str: ...
-
 
 @dataclass
 class MockEmailTransport:
@@ -35,7 +31,6 @@ class MockEmailTransport:
     def deliver(self, message: SentEmail) -> str:
         self.sent.append(message)
         return f"mock-{len(self.sent)}"
-
 
 class SmtpEmailTransport:
     def __init__(
@@ -89,7 +84,6 @@ class SmtpEmailTransport:
             raise EmailError(f"delivery to {message.to} failed: {error}") from error
 
         return email["Message-ID"] or f"smtp-{abs(hash(message.body))}"
-
 
 class EmailTool:
     def __init__(self, transport: EmailTransport) -> None:

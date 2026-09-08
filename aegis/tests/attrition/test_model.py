@@ -18,7 +18,6 @@ from aegis.attrition import (
 
 RANDOM = random.Random(20260905)
 
-
 def snapshot(
     key: str = "subj_1",
     *,
@@ -46,7 +45,6 @@ def snapshot(
         internal_applications_12m=internal_applications,
     )
 
-
 def training_set(size: int = 200) -> tuple[list[EmployeeSnapshot], list[bool]]:
     snapshots: list[EmployeeSnapshot] = []
     outcomes: list[bool] = []
@@ -70,12 +68,10 @@ def training_set(size: int = 200) -> tuple[list[EmployeeSnapshot], list[bool]]:
 
     return snapshots, outcomes
 
-
 def trained(algorithm: str = "gradient_boosting") -> AttritionModel:
     model = AttritionModel(algorithm)
     model.train(*training_set())
     return model
-
 
 class TestFeatureEngineering:
     def test_compensation_becomes_a_relative_position_not_an_absolute(self) -> None:
@@ -115,7 +111,6 @@ class TestFeatureEngineering:
         with pytest.raises(FeatureError, match="missing required fields"):
             from_mapping("subj_1", {"tenure_years": 3.0})
 
-
 class TestProtectedAttributeGuard:
     def test_a_protected_attribute_in_the_input_is_refused(self) -> None:
         with pytest.raises(ProtectedFeatureError, match="gender"):
@@ -142,7 +137,6 @@ class TestProtectedAttributeGuard:
         from aegis.attrition import FEATURE_NAMES
 
         assert_no_protected_attributes(FEATURE_NAMES)
-
 
 class TestTraining:
     def test_a_model_trains_on_a_realistic_cohort(self) -> None:
@@ -187,7 +181,6 @@ class TestTraining:
         model = trained(algorithm)
 
         assert 0.0 <= model.score(snapshot()).probability <= 1.0
-
 
 class TestScoring:
     def test_a_settled_well_paid_employee_scores_low(self) -> None:
@@ -243,7 +236,6 @@ class TestScoring:
     def test_the_subject_key_is_carried_through_so_it_stays_pseudonymous(self) -> None:
         assert trained().score(snapshot("subj_abc123")).subject_key == "subj_abc123"
 
-
 class TestRiskBands:
     @pytest.mark.parametrize(
         ("probability", "expected"),
@@ -260,7 +252,6 @@ class TestRiskBands:
         self, probability: float, expected: RiskBand
     ) -> None:
         assert RiskBand.from_probability(probability) is expected
-
 
 class TestExplainability:
     def test_feature_importance_is_available_and_normalised(self) -> None:

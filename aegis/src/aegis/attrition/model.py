@@ -20,17 +20,14 @@ from aegis.attrition.features import (
 
 MINIMUM_TRAINING_ROWS = 40
 
-
 class ModelError(RuntimeError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Driver:
     feature: str
     contribution: float
     direction: str
-
 
 @dataclass(frozen=True, slots=True)
 class AttritionScore:
@@ -46,7 +43,6 @@ class AttritionScore:
     def top_drivers(self, limit: int = 3) -> tuple[Driver, ...]:
         return self.drivers[:limit]
 
-
 @dataclass(frozen=True, slots=True)
 class TrainingReport:
     rows: int
@@ -58,7 +54,6 @@ class TrainingReport:
     def positive_rate(self) -> float:
         return self.positives / self.rows if self.rows else 0.0
 
-
 def _estimator(algorithm: str) -> object:
     if algorithm == "gradient_boosting":
         return GradientBoostingClassifier(random_state=0)
@@ -67,7 +62,6 @@ def _estimator(algorithm: str) -> object:
     if algorithm == "logistic_regression":
         return LogisticRegression(max_iter=1000, random_state=0)
     raise ModelError(f"unknown algorithm {algorithm!r}")
-
 
 class AttritionModel:
     def __init__(self, algorithm: str = "gradient_boosting") -> None:

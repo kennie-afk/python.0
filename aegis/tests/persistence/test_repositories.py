@@ -28,14 +28,12 @@ CONTEXT = {
 TENANT = "66666666-6666-6666-6666-666666666666"
 OTHER = "77777777-7777-7777-7777-777777777777"
 
-
 @pytest.fixture
 def database() -> Iterator[Database]:
     db = Database("sqlite+pysqlite:///:memory:")
     db.create_all()
     yield db
     db.dispose()
-
 
 def make_run(policy: TenantPolicy | None = None):
     tools = ToolRegistry()
@@ -48,7 +46,6 @@ def make_run(policy: TenantPolicy | None = None):
     run = runtime.start(TALENT_ACQUISITION, UUID(TENANT), "candidate-42", context=dict(CONTEXT))
     runtime.advance(run)
     return runtime, run
-
 
 class TestRunPersistence:
     def test_a_run_survives_a_restart(self, database: Database) -> None:
@@ -166,7 +163,6 @@ class TestRunPersistence:
         assert restored is not None
         assert restored.context["role"] == "engineer"
 
-
 class TestLedgerPersistence:
     def test_entries_persist_and_verify_intact(self, database: Database) -> None:
         with database.session() as session:
@@ -242,7 +238,6 @@ class TestLedgerPersistence:
         with database.session() as session:
             assert LedgerRepository(session).entries(OTHER) == ()
 
-
 class TestPolicyPersistence:
     def test_a_tenant_policy_round_trips(self, database: Database) -> None:
         policy = TenantPolicy(
@@ -279,7 +274,6 @@ class TestPolicyPersistence:
 
         assert restored is not None
         assert ActionType.SCHEDULE_INTERVIEW in restored.autonomous_actions
-
 
 class TestApiKeyPersistence:
     def test_an_issued_key_resolves_to_its_tenant(self, database: Database) -> None:

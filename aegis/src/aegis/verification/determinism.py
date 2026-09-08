@@ -7,17 +7,14 @@ from enum import StrEnum
 
 from aegis.verification.normalizers import Normalizer, identity
 
-
 class Stability(StrEnum):
     DETERMINISTIC = "DETERMINISTIC"
     NEAR_DETERMINISTIC = "NEAR_DETERMINISTIC"
     UNSTABLE = "UNSTABLE"
     NON_DETERMINISTIC = "NON_DETERMINISTIC"
 
-
 class ProbeError(RuntimeError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class DeterminismReport:
@@ -40,7 +37,6 @@ class DeterminismReport:
 
     def divergence_examples(self, limit: int = 3) -> tuple[str, ...]:
         return tuple(output for output, _ in self.variants if output != self.modal_output)[:limit]
-
 
 class DeterminismProbe:
     def __init__(

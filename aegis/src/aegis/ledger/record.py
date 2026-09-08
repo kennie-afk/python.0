@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 
 GENESIS = "0" * 64
 
-
 @dataclass(frozen=True, slots=True)
 class LedgerEntry:
     sequence: int
@@ -29,14 +28,12 @@ class LedgerEntry:
     def was_human_approved(self) -> bool:
         return self.approver is not None
 
-
 @dataclass(frozen=True, slots=True)
 class IntegrityReport:
     intact: bool
     entries_checked: int
     broken_at: int | None = None
     reason: str | None = None
-
 
 def _canonical(
     sequence: int,
@@ -47,7 +44,6 @@ def _canonical(
     parts = [str(sequence), previous_hash, recorded_at.isoformat()]
     parts.extend("" if value is None else value for value in fields)
     return "".join(f"{len(part)}:{part}" for part in parts)
-
 
 def make_entry(
     sequence: int,
@@ -100,7 +96,6 @@ def make_entry(
         previous_hash=previous_hash,
         entry_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
     )
-
 
 class DecisionLedger:
     def __init__(self) -> None:

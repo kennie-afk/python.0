@@ -5,14 +5,11 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-
 class ReasoningError(RuntimeError):
     pass
 
-
 class UnparseableResponseError(ReasoningError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Prompt:
@@ -43,7 +40,6 @@ class Prompt:
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
-
 @dataclass(frozen=True, slots=True)
 class Completion:
     text: str
@@ -70,7 +66,6 @@ class Completion:
                 f"model {self.model} returned {type(parsed).__name__}, expected an object"
             )
         return parsed
-
 
 class LanguageModel(Protocol):
     @property

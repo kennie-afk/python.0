@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-
 @dataclass(slots=True)
 class ArmState:
     successes: float = 1.0
@@ -17,7 +16,6 @@ class ArmState:
     @property
     def mean(self) -> float:
         return self.successes / (self.successes + self.failures)
-
 
 @dataclass(slots=True)
 class ThompsonSampler:

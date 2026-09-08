@@ -6,7 +6,6 @@ import httpx
 
 from aegis.reasoning.provider import Completion, Prompt, ReasoningError
 
-
 class HttpLanguageModel:
     def __init__(
         self,

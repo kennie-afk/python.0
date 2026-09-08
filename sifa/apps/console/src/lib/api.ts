@@ -1,4 +1,5 @@
 const API = process.env.SIFA_API_URL ?? "http://127.0.0.1:4700";
+const API_KEY = process.env.SIFA_API_KEY ?? "";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -13,7 +14,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API}${path}`, {
     ...init,
     cache: "no-store",
-    headers: { Accept: "application/json", ...(init?.headers ?? {}) }
+    headers: {
+      Accept: "application/json",
+      ...(API_KEY ? { "X-Api-Key": API_KEY } : {}),
+      ...(init?.headers ?? {})
+    }
   });
 
   if (!response.ok) {

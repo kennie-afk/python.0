@@ -6,10 +6,8 @@ from datetime import UTC, datetime, timedelta
 from aegis.agents.tools import ToolResult
 from aegis.governance.actions import ActionType, ProposedAction
 
-
 class CalendarError(RuntimeError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Slot:
@@ -22,7 +20,6 @@ class Slot:
 
     def overlaps(self, other: Slot) -> bool:
         return self.starts_at < other.ends_at and other.starts_at < self.ends_at
-
 
 @dataclass
 class InMemoryCalendar:
@@ -44,7 +41,6 @@ class InMemoryCalendar:
             self.availability(attendee).append(slot)
 
         return f"evt-{int(slot.starts_at.timestamp())}-{len(attendees)}"
-
 
 class CalendarTool:
     def __init__(self, calendar: InMemoryCalendar, default_minutes: int = 45) -> None:

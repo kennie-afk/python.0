@@ -5,13 +5,11 @@ from enum import StrEnum
 
 from aegis.governance.actions import ActionType, RestrictedDomain
 
-
 class Verdict(StrEnum):
     ALLOW = "ALLOW"
     REQUIRE_HUMAN_APPROVAL = "REQUIRE_HUMAN_APPROVAL"
     ESCALATE = "ESCALATE"
     DENY = "DENY"
-
 
 @dataclass(frozen=True, slots=True)
 class Decision:
@@ -30,7 +28,6 @@ class Decision:
 
     def summary(self) -> str:
         return "; ".join(self.reasons) if self.reasons else "permitted by policy"
-
 
 @dataclass(frozen=True, slots=True)
 class TenantPolicy:

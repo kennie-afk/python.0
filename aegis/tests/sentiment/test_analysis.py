@@ -11,10 +11,8 @@ from aegis.sentiment import (
     score_text,
 )
 
-
 def responses(group: str, texts: list[str]) -> list[Response]:
     return [Response(group=group, text=text) for text in texts]
-
 
 def positive_team(group: str = "platform", size: int = 6) -> list[Response]:
     return responses(
@@ -29,7 +27,6 @@ def positive_team(group: str = "platform", size: int = 6) -> list[Response]:
         ][:size],
     )
 
-
 def struggling_team(group: str = "support", size: int = 6) -> list[Response]:
     return responses(
         group,
@@ -42,7 +39,6 @@ def struggling_team(group: str = "support", size: int = 6) -> list[Response]:
             "Career progression is stuck and I am thinking of leaving.",
         ][:size],
     )
-
 
 class TestScoring:
     def test_positive_language_scores_positive(self) -> None:
@@ -73,7 +69,6 @@ class TestScoring:
         assert Aspect.LEADERSHIP in aspects
         assert Aspect.COMPENSATION in aspects
 
-
 class TestAggregation:
     def test_a_healthy_team_reports_positive_sentiment(self) -> None:
         report = analyse(positive_team())
@@ -100,7 +95,6 @@ class TestAggregation:
         report = analyse(positive_team() + struggling_team())
 
         assert len(report.groups) == 2
-
 
 class TestPrivacyThreshold:
     def test_a_group_below_the_threshold_is_withheld_entirely(self) -> None:
@@ -132,7 +126,6 @@ class TestPrivacyThreshold:
         assert group is not None
         assert not hasattr(group, "responses")
         assert isinstance(group.overall, float)
-
 
 class TestEarlyWarning:
     def test_a_sharp_drop_in_an_aspect_raises_a_warning(self) -> None:

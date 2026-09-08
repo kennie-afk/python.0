@@ -8,7 +8,6 @@ from typing import Any
 from sifa.core.clock import now
 from sifa.core.errors import RegistryError
 
-
 class Stage(StrEnum):
     DRAFT = "draft"
     SHADOW = "shadow"
@@ -16,7 +15,6 @@ class Stage(StrEnum):
     LIVE = "live"
     ROLLED_BACK = "rolled_back"
     ARCHIVED = "archived"
-
 
 ALLOWED: dict[Stage, set[Stage]] = {
     Stage.DRAFT: {Stage.SHADOW, Stage.ARCHIVED},
@@ -26,7 +24,6 @@ ALLOWED: dict[Stage, set[Stage]] = {
     Stage.ROLLED_BACK: {Stage.ARCHIVED},
     Stage.ARCHIVED: set(),
 }
-
 
 @dataclass(slots=True)
 class ModelVersion:
@@ -42,7 +39,6 @@ class ModelVersion:
     @property
     def label(self) -> str:
         return f"{self.name}:v{self.version}"
-
 
 class ModelRegistry:
     def __init__(self, canary_traffic: float = 0.1) -> None:

@@ -26,12 +26,23 @@ ranking system is really estimating.
 ## Running it
 
 ```bash
+cp .env.example .env
+export SIFA_API_KEYS=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+
 pip install -e ".[api,dev]"
 uvicorn sifa.serving.api:app --port 4700
 cd apps/console && npm install && npm run dev
 ```
 
 Or `docker compose up --build`, which serves the API on 8000 and the console on 3200.
+
+Every `/v1` route requires an `X-Api-Key` header matching one of the comma-separated
+values in `SIFA_API_KEYS`, and the service refuses to start if that variable is unset
+or holds a key shorter than 24 characters. `/healthz` stays open so an orchestrator can
+probe it. This is not decoration: `/v1/registry/promote` and `/v1/registry/rollback`
+change which model is serving live traffic, and `/v1/retrieval/benchmark` will build a
+40,000 vector index on demand. `SIFA_CORS_ORIGINS` is empty by default, because the
+console calls the API from the server, never from the browser.
 
 There is no database and no seed step. The service builds a simulated world on
 first request — users, items with topics and authors, timestamped interactions —

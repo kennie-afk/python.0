@@ -52,12 +52,10 @@ PEDIGREE_ATTRIBUTES: frozenset[str] = frozenset(
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?:\+?\d[\d\s().-]{7,}\d)")
 
-
 class RedactionMode(StrEnum):
     DROP = "DROP"
     PSEUDONYMISE = "PSEUDONYMISE"
     GENERALISE = "GENERALISE"
-
 
 @dataclass(frozen=True, slots=True)
 class AnonymizationReport:
@@ -81,10 +79,8 @@ class AnonymizationReport:
     def is_clean(self) -> bool:
         return not self.touched
 
-
 class LeakageError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class AnonymizedRecord:
@@ -97,7 +93,6 @@ class AnonymizedRecord:
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.attributes.get(key, default)
-
 
 class AnonymizationEngine:
     def __init__(

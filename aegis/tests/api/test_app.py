@@ -15,7 +15,6 @@ OTHER_TENANT = "44444444-4444-4444-4444-444444444444"
 
 RANDOM = random.Random(20260905)
 
-
 @pytest.fixture
 def platform() -> Iterator[Platform]:
     database = Database("sqlite+pysqlite:///:memory:")
@@ -25,24 +24,20 @@ def platform() -> Iterator[Platform]:
     app.dependency_overrides.clear()
     database.dispose()
 
-
 @pytest.fixture
 def client(platform: Platform) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
-
 
 @pytest.fixture
 def auth(platform: Platform) -> dict[str, str]:
     token = platform.tokens.mint(TENANT, "hr.partner@example.com", frozenset({"ADMIN"}))
     return {"Authorization": f"Bearer {token}"}
 
-
 @pytest.fixture
 def other_auth(platform: Platform) -> dict[str, str]:
     token = platform.tokens.mint(OTHER_TENANT, "someone@else.com")
     return {"Authorization": f"Bearer {token}"}
-
 
 CONTEXT = {
     "recipient_email": "candidate@example.com",
@@ -51,7 +46,6 @@ CONTEXT = {
     "attendees": ["interviewer@example.com"],
     "starts_at": "2099-01-01T09:00:00+00:00",
 }
-
 
 def employee(index: int, leaving: bool) -> dict[str, float | int | str]:
     return {
@@ -69,7 +63,6 @@ def employee(index: int, leaving: bool) -> dict[str, float | int | str]:
         "internal_applications_12m": 3 if leaving else 0,
     }
 
-
 def cohort(size: int = 120) -> tuple[list[dict[str, object]], list[bool]]:
     employees, left = [], []
     for index in range(size):
@@ -77,7 +70,6 @@ def cohort(size: int = 120) -> tuple[list[dict[str, object]], list[bool]]:
         employees.append(employee(index, leaving))
         left.append(leaving)
     return employees, left
-
 
 class TestAuthentication:
     def test_an_unauthenticated_request_is_refused(self, client: TestClient) -> None:
@@ -119,7 +111,6 @@ class TestAuthentication:
 
     def test_health_needs_no_authentication(self, client: TestClient) -> None:
         assert client.get("/health").json() == {"status": "ok"}
-
 
 class TestTenantIsolation:
     def test_one_tenant_cannot_read_anothers_run(
@@ -165,7 +156,6 @@ class TestTenantIsolation:
         )
 
         assert response.status_code == 409
-
 
 class TestPersistence:
     def test_a_run_survives_a_new_client_connection(
@@ -246,7 +236,6 @@ class TestPersistence:
         assert report["intact"]
         assert report["entries_checked"] >= 3
 
-
 class TestScreening:
     def test_a_candidate_is_screened_by_the_reasoning_layer(
         self, client: TestClient, auth: dict[str, str]
@@ -290,7 +279,6 @@ class TestScreening:
         )
 
         assert response.status_code == 422
-
 
 class TestWorkflows:
     def test_the_catalogue_is_discoverable(self, client: TestClient) -> None:
@@ -385,7 +373,6 @@ class TestWorkflows:
         rejected = next(item for item in response.json()["steps"] if item["key"] == step)
         assert rejected["status"] == "REJECTED"
 
-
 class TestComplianceEndpoints:
     def test_anonymisation_strips_protected_and_identifying_fields(
         self, client: TestClient, auth: dict[str, str]
@@ -443,7 +430,6 @@ class TestComplianceEndpoints:
         )
 
         assert response.status_code == 409
-
 
 class TestRetryingAFailedStep:
     def _run_through_to(self, client: TestClient, auth: dict[str, str], slot: str) -> dict:
@@ -555,7 +541,6 @@ class TestRetryingAFailedStep:
 
         assert response.status_code == 404
 
-
 class TestConsoleEndpoints:
     def test_an_api_key_is_exchanged_for_a_token(
         self, client: TestClient, platform: Platform
@@ -663,7 +648,6 @@ class TestConsoleEndpoints:
         assert body["trained"] is True
         assert body["rows"] == len(employees)
         assert body["feature_importance"]
-
 
 class TestDeliveryConfiguration:
     def test_it_falls_back_to_safe_defaults_when_nothing_is_configured(

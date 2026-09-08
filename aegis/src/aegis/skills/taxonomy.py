@@ -9,7 +9,6 @@ from enum import IntEnum
 TOKEN = re.compile(r"[a-z0-9][a-z0-9+#.\-]*")
 TRAILING = ".-+#"
 
-
 class Proficiency(IntEnum):
     NONE = 0
     AWARENESS = 1
@@ -29,10 +28,8 @@ class Proficiency(IntEnum):
             return cls.WORKING
         return cls.AWARENESS
 
-
 class TaxonomyError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Skill:
@@ -44,14 +41,12 @@ class Skill:
         lowered = token.lower()
         return lowered == self.name.lower() or lowered in {a.lower() for a in self.aliases}
 
-
 @dataclass(frozen=True, slots=True)
 class SkillHolding:
     skill: str
     proficiency: Proficiency
     mentions: int
     years: float
-
 
 @dataclass(frozen=True, slots=True)
 class SkillProfile:
@@ -68,7 +63,6 @@ class SkillProfile:
         return frozenset(
             holding.skill for holding in self.holdings if holding.proficiency > Proficiency.NONE
         )
-
 
 class SkillTaxonomy:
     def __init__(self, skills: Sequence[Skill]) -> None:
@@ -128,13 +122,11 @@ class SkillTaxonomy:
         )
         return SkillProfile(subject_key=subject_key, holdings=holdings)
 
-
 @dataclass(frozen=True, slots=True)
 class SkillRequirement:
     skill: str
     required: Proficiency
     headcount: int = 1
-
 
 @dataclass(frozen=True, slots=True)
 class Gap:
@@ -150,7 +142,6 @@ class Gap:
     @property
     def covered(self) -> bool:
         return self.shortfall == 0
-
 
 @dataclass(frozen=True, slots=True)
 class GapForecast:
@@ -173,7 +164,6 @@ class GapForecast:
             f"{self.total_shortfall} unmet requirements over {self.horizon_months} months, "
             f"worst is {worst.skill} short by {worst.shortfall}"
         )
-
 
 def forecast_gaps(
     profiles: Sequence[SkillProfile],

@@ -8,7 +8,6 @@ import numpy as np
 
 Vector = np.ndarray
 
-
 @dataclass(frozen=True, slots=True)
 class Candidate:
     item_id: str
@@ -19,7 +18,6 @@ class Candidate:
         if not self.item_id:
             raise ValueError("a candidate must have an item id")
 
-
 @dataclass(frozen=True, slots=True)
 class ScoredItem:
     item_id: str
@@ -28,7 +26,6 @@ class ScoredItem:
     source: str
     features: dict[str, float] = field(default_factory=dict)
     reasons: tuple[str, ...] = ()
-
 
 @dataclass(frozen=True, slots=True)
 class Impression:
@@ -40,7 +37,6 @@ class Impression:
     variant: str
     served_at: datetime
 
-
 @dataclass(frozen=True, slots=True)
 class Interaction:
     user_id: str
@@ -49,7 +45,6 @@ class Interaction:
     occurred_at: datetime
     dwell_seconds: float = 0.0
     value: float = 1.0
-
 
 @dataclass(frozen=True, slots=True)
 class RankedFeed:

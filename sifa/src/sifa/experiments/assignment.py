@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from sifa.core.errors import ExperimentError
 
-
 @dataclass(frozen=True, slots=True)
 class Variant:
     name: str
@@ -14,7 +13,6 @@ class Variant:
     def __post_init__(self) -> None:
         if self.weight <= 0:
             raise ExperimentError(f"variant {self.name!r} needs a positive weight")
-
 
 @dataclass(frozen=True, slots=True)
 class Experiment:
@@ -36,11 +34,9 @@ class Experiment:
     def total_weight(self) -> float:
         return sum(variant.weight for variant in self.variants)
 
-
 def _bucket(unit_id: str, key: str, salt: str) -> float:
     digest = hashlib.sha256(f"{salt}:{key}:{unit_id}".encode()).digest()
     return int.from_bytes(digest[:8], "big") / float(1 << 64)
-
 
 def assign(experiment: Experiment, unit_id: str) -> str:
     if not unit_id:

@@ -3,12 +3,10 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
-
 def dcg(relevances: Sequence[float], k: int | None = None) -> float:
     limit = len(relevances) if k is None else min(k, len(relevances))
     total = sum((2.0 ** relevances[i] - 1.0) / math.log2(i + 2) for i in range(limit))
     return float(total)
-
 
 def ndcg(relevances: Sequence[float], k: int | None = None) -> float:
     ideal = dcg(sorted(relevances, reverse=True), k)
@@ -16,26 +14,22 @@ def ndcg(relevances: Sequence[float], k: int | None = None) -> float:
         return 0.0
     return dcg(relevances, k) / ideal
 
-
 def recall_at_k(retrieved: Sequence[str], relevant: set[str], k: int) -> float:
     if not relevant:
         return 0.0
     hits = len(set(retrieved[:k]) & relevant)
     return hits / len(relevant)
 
-
 def precision_at_k(retrieved: Sequence[str], relevant: set[str], k: int) -> float:
     if k == 0:
         return 0.0
     return len(set(retrieved[:k]) & relevant) / k
-
 
 def mean_reciprocal_rank(retrieved: Sequence[str], relevant: set[str]) -> float:
     for position, item in enumerate(retrieved, start=1):
         if item in relevant:
             return 1.0 / position
     return 0.0
-
 
 def average_precision(retrieved: Sequence[str], relevant: set[str]) -> float:
     if not relevant:
@@ -47,7 +41,6 @@ def average_precision(retrieved: Sequence[str], relevant: set[str]) -> float:
             hits += 1
             total += hits / position
     return total / len(relevant)
-
 
 def expected_calibration_error(
     probabilities: Sequence[float], outcomes: Sequence[int], bins: int = 10
@@ -75,7 +68,6 @@ def expected_calibration_error(
         error += (len(members) / total) * abs(accuracy - confidence)
 
     return error
-
 
 def intra_list_diversity(similarities: Sequence[Sequence[float]]) -> float:
     n = len(similarities)

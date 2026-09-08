@@ -8,7 +8,6 @@ from sifa.core.errors import NotTrainedError
 from sifa.core.types import Candidate
 from sifa.index.hnsw import HnswConfig, HnswIndex, normalise
 
-
 @dataclass(frozen=True, slots=True)
 class TwoTowerConfig:
     dimension: int = 64
@@ -17,7 +16,6 @@ class TwoTowerConfig:
     negatives: int = 8
     seed: int = 23
     l2: float = 1e-5
-
 
 class TwoTowerModel:
     def __init__(self, config: TwoTowerConfig | None = None) -> None:
@@ -131,7 +129,6 @@ class TwoTowerModel:
         for key, vector in zip(self._item_keys, self._item_vectors, strict=True):
             index.add(key, vector)
         return index
-
 
 class Retriever:
     def __init__(self, model: TwoTowerModel, index: HnswIndex) -> None:

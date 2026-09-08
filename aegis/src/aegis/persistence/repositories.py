@@ -22,10 +22,8 @@ from aegis.hr.workflows import CATALOGUE
 from aegis.ledger.record import GENESIS, DecisionLedger, IntegrityReport, LedgerEntry
 from aegis.persistence.models import ApiKeyRow, LedgerRow, ModelRow, RunRow, StepRow, TenantRow
 
-
 class UnknownWorkflowError(LookupError):
     pass
-
 
 class RunRepository:
     def __init__(self, session: Session) -> None:
@@ -108,7 +106,6 @@ class RunRepository:
             run.steps[step_row.step_key] = state
         return run
 
-
 class LedgerRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -176,7 +173,6 @@ class LedgerRepository:
         ledger._entries.extend(self.entries(tenant_id))
         return ledger.verify()
 
-
 class PolicyRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -210,7 +206,6 @@ class PolicyRepository:
             approver_role=row.approver_role,
             escalation_role=row.escalation_role,
         )
-
 
 class ModelRepository:
     def __init__(self, session: Session) -> None:
@@ -250,7 +245,6 @@ class ModelRepository:
         if not isinstance(restored, AttritionModel):
             return None
         return restored
-
 
 class ApiKeyRepository:
     def __init__(self, session: Session) -> None:

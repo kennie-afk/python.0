@@ -6,14 +6,11 @@ from enum import StrEnum
 
 from aegis.anonymization.engine import PROTECTED_ATTRIBUTES
 
-
 class FeatureError(ValueError):
     pass
 
-
 class ProtectedFeatureError(FeatureError):
     pass
-
 
 FEATURE_NAMES: tuple[str, ...] = (
     "tenure_years",
@@ -28,7 +25,6 @@ FEATURE_NAMES: tuple[str, ...] = (
     "internal_applications_12m",
 )
 
-
 class RiskBand(StrEnum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -41,7 +37,6 @@ class RiskBand(StrEnum):
         if probability >= 0.30:
             return cls.MEDIUM
         return cls.LOW
-
 
 @dataclass(frozen=True, slots=True)
 class EmployeeSnapshot:
@@ -67,7 +62,6 @@ class EmployeeSnapshot:
         if self.tenure_years < 0 or self.months_since_promotion < 0:
             raise FeatureError(f"{self.subject_key}: durations cannot be negative")
 
-
 def assert_no_protected_attributes(columns: Sequence[str]) -> None:
     offending = sorted(column for column in columns if column.lower() in PROTECTED_ATTRIBUTES)
     if offending:
@@ -75,7 +69,6 @@ def assert_no_protected_attributes(columns: Sequence[str]) -> None:
             "attrition features must never include protected attributes, found: "
             + ", ".join(offending)
         )
-
 
 def build_features(snapshot: EmployeeSnapshot) -> dict[str, float]:
     return {
@@ -90,7 +83,6 @@ def build_features(snapshot: EmployeeSnapshot) -> dict[str, float]:
         "overtime_hours_monthly": snapshot.overtime_hours_monthly,
         "internal_applications_12m": float(snapshot.internal_applications_12m),
     }
-
 
 def from_mapping(subject_key: str, record: Mapping[str, float]) -> EmployeeSnapshot:
     assert_no_protected_attributes(list(record))

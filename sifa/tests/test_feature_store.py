@@ -18,15 +18,12 @@ VIEW = FeatureView(
     ttl=timedelta(days=30),
 )
 
-
 def at(day: int, hour: int = 12) -> datetime:
     return datetime(2026, 3, day, hour, tzinfo=UTC)
-
 
 @pytest.fixture
 def store() -> FeatureStore:
     return FeatureStore(VIEW)
-
 
 class TestPointInTimeCorrectness:
     def test_a_join_never_sees_a_value_written_after_the_label(self, store: FeatureStore) -> None:
@@ -99,7 +96,6 @@ class TestPointInTimeCorrectness:
 
         assert examples[0].features["clicks_7d"] == 5.0
 
-
 class TestLeakageDetection:
     def test_a_correct_join_passes_the_audit(self, store: FeatureStore) -> None:
         store.write("u1", at(1), {"clicks_7d": 5.0})
@@ -125,7 +121,6 @@ class TestLeakageDetection:
 
         with pytest.raises(LeakageError, match="after the label"):
             store.assert_no_leakage(cheated)
-
 
 class TestSchema:
     def test_an_undeclared_feature_is_refused_on_write(self, store: FeatureStore) -> None:

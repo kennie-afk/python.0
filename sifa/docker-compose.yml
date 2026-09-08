@@ -1,19 +1,24 @@
 services:
   api:
     build: .
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${SIFA_API_PORT:-8000}:8000"
     environment:
       SIFA_USERS: "240"
       SIFA_ITEMS: "600"
+      SIFA_API_KEYS: ${SIFA_API_KEYS:?SIFA_API_KEYS must be set to one or more keys of at least 24 characters}
+      SIFA_CORS_ORIGINS: ${SIFA_CORS_ORIGINS:-}
 
   console:
     build:
       context: ./apps/console
+    restart: unless-stopped
     ports:
-      - "3200:3200"
+      - "${SIFA_CONSOLE_PORT:-3200}:3200"
     environment:
       SIFA_API_URL: http://api:8000
+      SIFA_API_KEY: ${SIFA_API_KEYS:?SIFA_API_KEYS must be set to one or more keys of at least 24 characters}
     depends_on:
       api:
         condition: service_healthy

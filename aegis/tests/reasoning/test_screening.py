@@ -17,10 +17,8 @@ from aegis.verification import DeterminismProbe, canonical_json
 
 SALT = "a-sufficiently-long-tenant-salt"
 
-
 def anonymizer() -> AnonymizationEngine:
     return AnonymizationEngine(salt=SALT, reference_year=2026)
-
 
 def candidate() -> dict[str, object]:
     return {
@@ -32,7 +30,6 @@ def candidate() -> dict[str, object]:
         "skill_match": 0.88,
         "summary": "Backend engineer with distributed systems experience.",
     }
-
 
 class TestPromptDiscipline:
     def test_a_sampling_temperature_is_refused_for_employment_decisions(self) -> None:
@@ -59,7 +56,6 @@ class TestPromptDiscipline:
 
         for forbidden in ("age", "gender", "ethnicity", "religion", "disability"):
             assert forbidden in SYSTEM_PROMPT
-
 
 class TestScreening:
     def test_a_candidate_is_screened_into_a_structured_result(self) -> None:
@@ -97,7 +93,6 @@ class TestScreening:
         assert result.model == "aegis-deterministic-v1"
         assert len(result.prompt_fingerprint) == 16
 
-
 class TestMalformedResponses:
     def test_non_json_is_rejected_rather_than_guessed_at(self) -> None:
         screener = CandidateScreener(ScriptedModel(["I think they are great!"]), anonymizer())
@@ -133,7 +128,6 @@ class TestMalformedResponses:
         screener = CandidateScreener(ScriptedModel([payload]), anonymizer())
 
         assert screener.screen(candidate(), "engineer").advances
-
 
 class TestDeterminism:
     def test_the_reasoning_layer_is_verifiably_deterministic(self) -> None:

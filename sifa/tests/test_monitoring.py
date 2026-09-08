@@ -8,11 +8,9 @@ from sifa.monitoring.drift import detect_drift, population_stability_index
 from sifa.monitoring.guard import GuardThresholds, RolloutGuard, ServingWindow
 from sifa.registry.models import ModelRegistry, Stage
 
-
 @pytest.fixture
 def rng() -> np.random.Generator:
     return np.random.default_rng(2)
-
 
 class TestPopulationStabilityIndex:
     def test_a_distribution_against_itself_scores_zero(self, rng: np.random.Generator) -> None:
@@ -41,7 +39,6 @@ class TestPopulationStabilityIndex:
     def test_too_little_data_reports_nothing_rather_than_guessing(self) -> None:
         assert population_stability_index([1.0], [2.0]) == 0.0
 
-
 class TestDriftReports:
     def test_a_stable_feature_is_reported_stable(self, rng: np.random.Generator) -> None:
         sample = rng.normal(0, 1, 3000)
@@ -60,7 +57,6 @@ class TestDriftReports:
     ) -> None:
         report = detect_drift("f", rng.normal(0, 1, 500), rng.normal(3, 1, 500))
         assert type(report.drifted) is bool
-
 
 class TestRegistryLifecycle:
     def test_a_model_walks_draft_to_live(self) -> None:
@@ -112,7 +108,6 @@ class TestRegistryLifecycle:
 
         assert registry.get("ranker", 2).stage is Stage.ROLLED_BACK
         assert registry.get("ranker", 1).stage is Stage.LIVE
-
 
 class TestRolloutGuard:
     def _window(self, impressions: int, click_every: int) -> ServingWindow:

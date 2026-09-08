@@ -16,7 +16,6 @@ from aegis.governance import (
 
 TENANT = UUID("11111111-1111-1111-1111-111111111111")
 
-
 def action(
     action_type: ActionType,
     *,
@@ -34,10 +33,8 @@ def action(
         touches_domains=domains,
     )
 
-
 def gate(policy: TenantPolicy | None = None) -> GovernanceGate:
     return GovernanceGate(policy or TenantPolicy.conservative(str(TENANT)))
-
 
 class TestRoutineAutomation:
     def test_a_delegated_reversible_action_runs_autonomously(self) -> None:
@@ -57,7 +54,6 @@ class TestRoutineAutomation:
         assert decision.verdict is Verdict.REQUIRE_HUMAN_APPROVAL
         assert not decision.may_execute_now
         assert decision.approver_role == "HR_BUSINESS_PARTNER"
-
 
 class TestIrreversibleActions:
     @pytest.mark.parametrize("action_type", sorted(IRREVERSIBLE_ACTIONS))
@@ -97,7 +93,6 @@ class TestIrreversibleActions:
 
         assert not decision.may_execute_now
 
-
 class TestPermissionBoundaries:
     def test_an_agent_cannot_touch_compensation_without_the_domain_granted(self) -> None:
         decision = gate().evaluate(action(ActionType.ADJUST_COMPENSATION))
@@ -132,7 +127,6 @@ class TestPermissionBoundaries:
         assert decision.verdict is Verdict.REQUIRE_HUMAN_APPROVAL
         assert not decision.blocked
 
-
 class TestTenantIsolation:
     def test_an_action_from_another_tenant_is_denied(self) -> None:
         decision = gate().evaluate(action(ActionType.SCHEDULE_INTERVIEW, tenant=uuid4()))
@@ -157,7 +151,6 @@ class TestTenantIsolation:
                 forbidden_actions=frozenset({ActionType.SEND_MESSAGE}),
             )
 
-
 class TestConfidence:
     def test_a_low_confidence_action_is_routed_to_a_human(self) -> None:
         decision = gate().evaluate(action(ActionType.SCORE_CANDIDATE, confidence=0.41))
@@ -171,7 +164,6 @@ class TestConfidence:
     def test_an_impossible_confidence_is_rejected_at_construction(self) -> None:
         with pytest.raises(ValueError, match="confidence"):
             action(ActionType.SCORE_CANDIDATE, confidence=1.4)
-
 
 class TestAccountability:
     def test_an_action_without_a_rationale_cannot_be_constructed(self) -> None:

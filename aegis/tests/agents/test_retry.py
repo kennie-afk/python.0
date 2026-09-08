@@ -42,7 +42,6 @@ WORKFLOW = WorkflowDefinition(
     ),
 )
 
-
 class ClashingCalendar(Tool):
     def __init__(self, taken: str) -> None:
         self._taken = taken
@@ -51,16 +50,14 @@ class ClashingCalendar(Tool):
     def handles(self) -> frozenset[ActionType]:
         return frozenset({ActionType.SCHEDULE_INTERVIEW})
 
-    def execute(self, action):  # type: ignore[no-untyped-def]
+    def execute(self, action):
         slot = str(action.payload.get("starts_at"))
         self.calls.append(slot)
         if slot == self._taken:
             return ToolResult(succeeded=False, detail=f"{slot} is already booked")
         return ToolResult(succeeded=True, output={"booked_at": slot})
 
-
 CONTEXT = {"recipient_email": "candidate@example.com", "starts_at": "2099-01-01T09:00:00+00:00"}
-
 
 def failed_run() -> tuple[AgentRuntime, WorkflowRun, ClashingCalendar, DecisionLedger]:
     clash = ClashingCalendar(taken=CONTEXT["starts_at"])
@@ -79,7 +76,6 @@ def failed_run() -> tuple[AgentRuntime, WorkflowRun, ClashingCalendar, DecisionL
     runtime.advance(run)
     assert run.status is RunStatus.FAILED
     return runtime, run, clash, ledger
-
 
 class TestRetryingAFailedStep:
     def test_a_clash_fails_the_run_before_any_retry(self) -> None:
@@ -137,7 +133,6 @@ class TestRetryingAFailedStep:
             runtime.retry(run, "book", actor="   ")
 
         assert run.state("book").status is StepStatus.FAILED
-
 
 class TestRetryRefusals:
     def test_a_denied_step_cannot_be_retried_into_approval(self) -> None:

@@ -84,14 +84,12 @@ from aegis.reasoning.screening import CandidateScreener
 
 logger = logging.getLogger("aegis.platform")
 
-
 def _configured_model() -> LanguageModel:
     try:
         return HttpLanguageModel.from_environment()
     except ReasoningError as reason:
         logger.info("using the deterministic model: %s", reason)
         return DeterministicModel()
-
 
 def _configured_email() -> EmailTransport:
     try:
@@ -100,16 +98,25 @@ def _configured_email() -> EmailTransport:
         logger.info("using the mock email transport: %s", reason)
         return MockEmailTransport()
 
+MIN_SALT_LENGTH = 16
+MIN_SIGNING_SECRET_LENGTH = 32
+
+def _required_secret(name: str, minimum: int) -> str:
+    value = os.environ.get(name, "")
+    if len(value) < minimum:
+        raise RuntimeError(
+            f"{name} must be set to at least {minimum} characters before Aegis will start; "
+            "a default would let anyone reproduce every pseudonym and forge every token"
+        )
+    return value
 
 class Platform:
     def __init__(self, database: Database | None = None, model: LanguageModel | None = None):
         self.database = database or Database()
         self.database.create_all()
-        self.salt = os.environ.get("AEGIS_ANONYMISATION_SALT", "aegis-development-salt-value")
+        self.salt = _required_secret("AEGIS_ANONYMISATION_SALT", MIN_SALT_LENGTH)
         self.tokens = TokenService(
-            secret=os.environ.get(
-                "AEGIS_JWT_SECRET", "aegis-development-signing-secret-not-for-production"
-            )
+            secret=_required_secret("AEGIS_JWT_SECRET", MIN_SIGNING_SECRET_LENGTH)
         )
         self.model = model or _configured_model()
         self.calendar = InMemoryCalendar()
@@ -145,7 +152,6 @@ class Platform:
 
     def screener(self) -> CandidateScreener:
         return CandidateScreener(self.model, self.anonymizer())
-
 
 class PersistentLedger(DecisionLedger):
     def __init__(self, session: Session, tenant: str) -> None:
@@ -190,16 +196,13 @@ class PersistentLedger(DecisionLedger):
         self._head = entry.entry_hash
         return entry
 
-
 _platform: Platform | None = None
-
 
 def get_platform() -> Iterator[Platform]:
     global _platform
     if _platform is None:
         _platform = Platform()
     yield _platform
-
 
 def principal(
     platform: Annotated[Platform, Depends(get_platform)],
@@ -237,7 +240,6 @@ def principal(
         detail="a bearer token or X-Api-Key is required; a tenant header is not authentication",
     )
 
-
 PrincipalDep = Annotated[Principal, Depends(principal)]
 PlatformDep = Annotated[Platform, Depends(get_platform)]
 
@@ -246,7 +248,6 @@ app = FastAPI(
     version="0.1.0",
     description="HR automation platform with structural governance",
 )
-
 
 @app.exception_handler(ApprovalError)
 async def approval_error_handler(_: object, error: ApprovalError) -> JSONResponse:
@@ -260,7 +261,6 @@ async def approval_error_handler(_: object, error: ApprovalError) -> JSONRespons
         },
     )
 
-
 @app.exception_handler(MissingContextError)
 async def missing_context_handler(_: object, error: MissingContextError) -> JSONResponse:
     return JSONResponse(
@@ -272,7 +272,6 @@ async def missing_context_handler(_: object, error: MissingContextError) -> JSON
             "code": "missing-context",
         },
     )
-
 
 @app.exception_handler(RetryError)
 async def retry_error_handler(_: object, error: RetryError) -> JSONResponse:
@@ -286,7 +285,6 @@ async def retry_error_handler(_: object, error: RetryError) -> JSONResponse:
         },
     )
 
-
 @app.exception_handler(ModelError)
 async def model_error_handler(_: object, error: ModelError) -> JSONResponse:
     return JSONResponse(
@@ -298,7 +296,6 @@ async def model_error_handler(_: object, error: ModelError) -> JSONResponse:
             "code": "model-error",
         },
     )
-
 
 @app.exception_handler(AdverseImpactError)
 async def adverse_impact_error_handler(_: object, error: AdverseImpactError) -> JSONResponse:
@@ -312,16 +309,13 @@ async def adverse_impact_error_handler(_: object, error: AdverseImpactError) -> 
         },
     )
 
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-
 @app.get("/v1/configuration")
 def configuration(caller: PrincipalDep, platform: PlatformDep) -> dict[str, str]:
     return {"tenant_id": caller.tenant_id, **platform.delivery}
-
 
 @app.post("/v1/auth/token")
 def exchange_key_for_token(request: TokenRequest, platform: PlatformDep) -> TokenResponse:
@@ -340,7 +334,6 @@ def exchange_key_for_token(request: TokenRequest, platform: PlatformDep) -> Toke
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)) from error
 
     return TokenResponse(token=token, tenant_id=tenant_id, subject=subject, roles=roles)
-
 
 @app.get("/v1/workflows")
 def list_workflows() -> dict[str, WorkflowView]:
@@ -363,7 +356,6 @@ def list_workflows() -> dict[str, WorkflowView]:
         )
         for name, wf in CATALOGUE.items()
     }
-
 
 def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
     return RunView(
@@ -392,7 +384,6 @@ def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
         context=dict(run.context),
     )
 
-
 @app.post("/v1/runs", status_code=status.HTTP_201_CREATED)
 def start_run(request: StartRunRequest, caller: PrincipalDep, platform: PlatformDep) -> RunView:
     definition = CATALOGUE.get(request.workflow)
@@ -409,14 +400,12 @@ def start_run(request: StartRunRequest, caller: PrincipalDep, platform: Platform
         RunRepository(session).save(run)
         return _view(run, runtime)
 
-
 @app.get("/v1/runs")
 def list_runs(caller: PrincipalDep, platform: PlatformDep) -> list[RunView]:
     with platform.database.session() as session:
         runs = RunRepository(session).for_tenant(caller.tenant_id)
         runtime = platform.runtime(session, caller.tenant_id)
         return [_view(run, runtime) for run in runs]
-
 
 @app.get("/v1/runs/{run_id}")
 def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView:
@@ -425,7 +414,6 @@ def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView
         if run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
         return _view(run, platform.runtime(session, caller.tenant_id))
-
 
 def _mutate_run(
     platform: Platform, caller: Principal, run_id: str, operation: str, **kwargs: Any
@@ -441,7 +429,6 @@ def _mutate_run(
         RunRepository(session).save(run)
         return _view(run, runtime)
 
-
 @app.post("/v1/runs/{run_id}/steps/{step_key}/approve")
 def approve_step(
     run_id: str,
@@ -453,7 +440,6 @@ def approve_step(
     return _mutate_run(
         platform, caller, run_id, "approve", step_key=step_key, approver=request.approver
     )
-
 
 @app.post("/v1/runs/{run_id}/steps/{step_key}/reject")
 def reject_step(
@@ -473,7 +459,6 @@ def reject_step(
         reason=request.reason,
     )
 
-
 @app.post("/v1/runs/{run_id}/steps/{step_key}/retry")
 def retry_step(
     run_id: str,
@@ -492,7 +477,6 @@ def retry_step(
         amendments=request.amendments,
     )
 
-
 @app.post("/v1/runs/{run_id}/steps/{step_key}/external")
 def resolve_external(
     run_id: str,
@@ -510,7 +494,6 @@ def resolve_external(
         result=request.result,
         succeeded=request.succeeded,
     )
-
 
 @app.post("/v1/anonymize")
 def anonymize(
@@ -532,7 +515,6 @@ def anonymize(
         scrubbed_free_text=list(result.report.scrubbed_free_text),
     )
 
-
 @app.post("/v1/screen")
 def screen_candidate(
     request: ScreenRequest, caller: PrincipalDep, platform: PlatformDep
@@ -553,7 +535,6 @@ def screen_candidate(
         model=result.model,
         prompt_fingerprint=result.prompt_fingerprint,
     )
-
 
 @app.post("/v1/bias/adverse-impact")
 def adverse_impact(request: AdverseImpactRequest, caller: PrincipalDep) -> AdverseImpactResponse:
@@ -584,7 +565,6 @@ def adverse_impact(request: AdverseImpactRequest, caller: PrincipalDep) -> Adver
         summary=report.summary(),
     )
 
-
 def _snapshot(employee: EmployeeIn) -> EmployeeSnapshot:
     return EmployeeSnapshot(
         subject_key=employee.subject_key,
@@ -600,7 +580,6 @@ def _snapshot(employee: EmployeeIn) -> EmployeeSnapshot:
         overtime_hours_monthly=employee.overtime_hours_monthly,
         internal_applications_12m=employee.internal_applications_12m,
     )
-
 
 @app.post("/v1/attrition/train")
 def train_model(
@@ -628,7 +607,6 @@ def train_model(
         feature_importance=dict(report.feature_importance),
     )
 
-
 @app.get("/v1/attrition/model")
 def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView:
     with platform.database.session() as session:
@@ -643,7 +621,6 @@ def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView
             trained_at=row.trained_at.isoformat(),
             feature_importance=dict(row.feature_importance),
         )
-
 
 @app.post("/v1/attrition/score")
 def score_employees(
@@ -677,7 +654,6 @@ def score_employees(
         for score in scores
     ]
 
-
 @app.get("/v1/ledger")
 def read_ledger(caller: PrincipalDep, platform: PlatformDep) -> list[LedgerEntryView]:
     with platform.database.session() as session:
@@ -697,7 +673,6 @@ def read_ledger(caller: PrincipalDep, platform: PlatformDep) -> list[LedgerEntry
         )
         for entry in entries
     ]
-
 
 @app.get("/v1/ledger/verify")
 def verify_ledger(caller: PrincipalDep, platform: PlatformDep) -> IntegrityView:

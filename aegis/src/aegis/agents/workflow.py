@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 
 from aegis.governance.actions import ActionType
 
-
 class StepStatus(StrEnum):
     PENDING = "PENDING"
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
@@ -20,14 +19,12 @@ class StepStatus(StrEnum):
     SKIPPED = "SKIPPED"
     DENIED = "DENIED"
 
-
 class RunStatus(StrEnum):
     RUNNING = "RUNNING"
     BLOCKED = "BLOCKED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
-
 
 TERMINAL_STEP_STATUSES: frozenset[StepStatus] = frozenset(
     {
@@ -39,7 +36,6 @@ TERMINAL_STEP_STATUSES: frozenset[StepStatus] = frozenset(
     }
 )
 
-
 @dataclass(frozen=True, slots=True)
 class StepDefinition:
     key: str
@@ -49,7 +45,6 @@ class StepDefinition:
     requires_context: tuple[str, ...] = ()
     awaits_external: bool = False
     optional: bool = False
-
 
 @dataclass(frozen=True, slots=True)
 class WorkflowDefinition:
@@ -92,7 +87,6 @@ class WorkflowDefinition:
                 return step
         raise KeyError(f"workflow {self.name} has no step {key!r}")
 
-
 @dataclass(slots=True)
 class StepState:
     key: str
@@ -111,7 +105,6 @@ class StepState:
         self.status = status
         self.reasons = tuple(reasons)
         self.updated_at = datetime.now(UTC)
-
 
 @dataclass(slots=True)
 class WorkflowRun:

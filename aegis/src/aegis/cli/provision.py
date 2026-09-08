@@ -16,7 +16,6 @@ POSTURES = {
     "permissive": TenantPolicy.permissive,
 }
 
-
 @dataclass(frozen=True, slots=True)
 class ProvisionedTenant:
     tenant_id: str
@@ -25,7 +24,6 @@ class ProvisionedTenant:
     api_key: str
     posture: str
     roles: tuple[str, ...]
-
 
 def provision_tenant(
     database: Database,
@@ -53,7 +51,6 @@ def provision_tenant(
         posture=posture,
         roles=roles,
     )
-
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -98,7 +95,6 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print("This key is shown once. Sign in to the console with it.")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

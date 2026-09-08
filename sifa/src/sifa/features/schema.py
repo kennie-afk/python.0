@@ -6,12 +6,10 @@ from enum import StrEnum
 
 from sifa.core.errors import SchemaError
 
-
 class FeatureKind(StrEnum):
     NUMERIC = "numeric"
     CATEGORICAL = "categorical"
     EMBEDDING = "embedding"
-
 
 @dataclass(frozen=True, slots=True)
 class FeatureSpec:
@@ -25,7 +23,6 @@ class FeatureSpec:
             raise SchemaError(f"feature name {self.name!r} must be non-empty and unspaced")
         if self.kind is FeatureKind.EMBEDDING and self.dimension < 2:
             raise SchemaError("an embedding feature needs a dimension of at least 2")
-
 
 @dataclass(frozen=True, slots=True)
 class FeatureView:

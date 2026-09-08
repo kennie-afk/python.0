@@ -6,13 +6,11 @@ from enum import StrEnum
 
 from sifa.core.errors import ExperimentError
 
-
 class Decision(StrEnum):
     CONTINUE = "continue"
     TREATMENT_WINS = "treatment_wins"
     CONTROL_WINS = "control_wins"
     NO_DIFFERENCE = "no_difference"
-
 
 @dataclass(frozen=True, slots=True)
 class SequentialResult:
@@ -24,13 +22,11 @@ class SequentialResult:
     samples: int
     threshold: float
 
-
 @dataclass(frozen=True, slots=True)
 class MixtureSprt:
     alpha: float = 0.05
     tau: float = 0.01
     minimum_samples: int = 200
-
 
     def __post_init__(self) -> None:
         if not 0.0 < self.alpha < 0.5:

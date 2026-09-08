@@ -3,10 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-
 class SimulationError(ValueError):
     pass
-
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
@@ -27,7 +25,6 @@ class Scenario:
         if self.hire_ramp_months < 0:
             raise SimulationError("ramp cannot be negative")
 
-
 @dataclass(frozen=True, slots=True)
 class MonthState:
     month: int
@@ -44,7 +41,6 @@ class MonthState:
     @property
     def covered(self) -> bool:
         return self.shortfall == 0.0
-
 
 @dataclass(frozen=True, slots=True)
 class SimulationResult:
@@ -84,7 +80,6 @@ class SimulationResult:
             f"{self.scenario}: capacity falls short from month "
             f"{self.first_shortfall_month}, peaking at {self.peak_shortfall:.1f} unmet"
         )
-
 
 def simulate(scenario: Scenario, months: int = 12) -> SimulationResult:
     if months <= 0:
@@ -129,12 +124,10 @@ def simulate(scenario: Scenario, months: int = 12) -> SimulationResult:
 
     return SimulationResult(scenario=scenario.name, months=tuple(states))
 
-
 def compare(scenarios: Sequence[Scenario], months: int = 12) -> tuple[SimulationResult, ...]:
     if not scenarios:
         raise SimulationError("nothing to compare")
     return tuple(simulate(scenario, months) for scenario in scenarios)
-
 
 def hires_required(scenario: Scenario, target_headcount: int, months: int = 12) -> int:
     if target_headcount < 0:

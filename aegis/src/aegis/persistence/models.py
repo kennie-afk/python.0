@@ -17,14 +17,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-
 def _now() -> datetime:
     return datetime.now(UTC)
 
-
 class Base(DeclarativeBase):
     pass
-
 
 class TenantRow(Base):
     __tablename__ = "tenants"
@@ -39,7 +36,6 @@ class TenantRow(Base):
     confidence_floor: Mapped[float] = mapped_column(Float, default=0.70)
     approver_role: Mapped[str] = mapped_column(String(100), default="HR_BUSINESS_PARTNER")
     escalation_role: Mapped[str] = mapped_column(String(100), default="HR_BUSINESS_PARTNER")
-
 
 class RunRow(Base):
     __tablename__ = "workflow_runs"
@@ -62,7 +58,6 @@ class RunRow(Base):
         back_populates="run", cascade="all, delete-orphan", lazy="selectin"
     )
 
-
 class StepRow(Base):
     __tablename__ = "workflow_steps"
     __table_args__ = (UniqueConstraint("run_id", "step_key", name="uq_run_step"),)
@@ -82,7 +77,6 @@ class StepRow(Base):
     )
 
     run: Mapped[RunRow] = relationship(back_populates="steps")
-
 
 class LedgerRow(Base):
     __tablename__ = "decision_ledger"
@@ -107,7 +101,6 @@ class LedgerRow(Base):
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
-
 class ModelRow(Base):
     __tablename__ = "attrition_models"
 
@@ -118,7 +111,6 @@ class ModelRow(Base):
     feature_importance: Mapped[dict[str, float]] = mapped_column(JSON, default=dict)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
 
 class ApiKeyRow(Base):
     __tablename__ = "api_keys"

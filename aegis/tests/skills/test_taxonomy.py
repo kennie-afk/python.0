@@ -15,7 +15,6 @@ from aegis.skills import (
     rank_roles,
 )
 
-
 def taxonomy() -> SkillTaxonomy:
     return SkillTaxonomy(
         [
@@ -25,7 +24,6 @@ def taxonomy() -> SkillTaxonomy:
             Skill("leadership", family="management"),
         ]
     )
-
 
 def profile(subject: str = "subj_1", years: dict[str, float] | None = None):
     return taxonomy().extract(
@@ -37,7 +35,6 @@ def profile(subject: str = "subj_1", years: dict[str, float] | None = None):
         ],
         years or {"python": 6.0, "postgresql": 4.0, "kubernetes": 2.0},
     )
-
 
 class TestTaxonomy:
     def test_aliases_resolve_to_the_canonical_skill(self) -> None:
@@ -59,7 +56,6 @@ class TestTaxonomy:
         with pytest.raises(TaxonomyError, match="at least one skill"):
             SkillTaxonomy([])
 
-
 class TestExtraction:
     def test_skills_are_extracted_from_free_text_evidence(self) -> None:
         assert "python" in profile().known()
@@ -78,7 +74,6 @@ class TestExtraction:
         sparse = taxonomy().extract("subj_2", ["Some exposure to kubernetes."], {})
 
         assert sparse.level("kubernetes") is Proficiency.AWARENESS
-
 
 class TestGapForecasting:
     def test_a_covered_requirement_reports_no_shortfall(self) -> None:
@@ -113,7 +108,6 @@ class TestGapForecasting:
     def test_an_impossible_attrition_rate_is_rejected(self) -> None:
         with pytest.raises(TaxonomyError, match="within"):
             forecast_gaps([profile()], [], attrition_rate=1.5)
-
 
 class TestMobility:
     def test_a_fully_qualified_employee_is_ready_now(self) -> None:

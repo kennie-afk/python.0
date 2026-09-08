@@ -10,7 +10,6 @@ from aegis.bias import (
     selection_outcomes,
 )
 
-
 class TestFourFifthsRule:
     def test_equal_selection_rates_show_no_adverse_impact(self) -> None:
         report = four_fifths_test(
@@ -81,7 +80,6 @@ class TestFourFifthsRule:
 
         assert len(report.failing_groups) == 2
 
-
 class TestSmallSamples:
     def test_a_group_below_the_minimum_size_is_excluded(self) -> None:
         report = four_fifths_test(
@@ -118,7 +116,6 @@ class TestSmallSamples:
 
         assert report.verdict is ImpactVerdict.INSUFFICIENT_DATA
 
-
 class TestStatisticalSignificance:
     def test_a_large_clear_disparity_is_statistically_significant(self) -> None:
         report = four_fifths_test(
@@ -142,7 +139,6 @@ class TestStatisticalSignificance:
         assert report.p_value is not None
         assert report.p_value > 0.05
 
-
 class TestInputValidation:
     def test_one_group_cannot_be_compared_against_itself(self) -> None:
         with pytest.raises(AdverseImpactError, match="at least two groups"):
@@ -164,7 +160,6 @@ class TestInputValidation:
     def test_an_empty_group_is_rejected(self) -> None:
         with pytest.raises(AdverseImpactError, match="no applicants"):
             GroupOutcome("group_a", selected=0, total=0)
-
 
 class TestOutcomeBuilding:
     def test_outcomes_are_derived_from_raw_decisions(self) -> None:

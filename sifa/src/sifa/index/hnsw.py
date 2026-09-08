@@ -9,7 +9,6 @@ import numpy as np
 
 from sifa.core.errors import VectorIndexError
 
-
 def normalise(vector: np.ndarray) -> np.ndarray:
     array = np.asarray(vector, dtype=np.float32).reshape(-1)
     norm = float(np.linalg.norm(array))
@@ -17,10 +16,8 @@ def normalise(vector: np.ndarray) -> np.ndarray:
         return array
     return np.asarray(array / norm, dtype=np.float32)
 
-
 def cosine_distance(left: np.ndarray, right: np.ndarray) -> float:
     return 1.0 - float(np.dot(normalise(left), normalise(right)))
-
 
 @dataclass(slots=True)
 class HnswConfig:
@@ -37,12 +34,10 @@ class HnswConfig:
         if self.ef_search < 1:
             raise VectorIndexError("ef_search must be at least 1")
 
-
 @dataclass(slots=True)
 class _Node:
     key: str
     neighbours: list[set[int]] = field(default_factory=list)
-
 
 class HnswIndex:
     def __init__(self, dimension: int, config: HnswConfig | None = None) -> None:

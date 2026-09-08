@@ -12,14 +12,12 @@ from aegis.auth.tokens import hash_api_key
 from aegis.cli import provision_tenant
 from aegis.persistence import ApiKeyRepository, Database, PolicyRepository
 
-
 @pytest.fixture
 def database() -> Iterator[Database]:
     db = Database("sqlite+pysqlite:///:memory:")
     db.create_all()
     yield db
     db.dispose()
-
 
 class TestProvisioningATenant:
     def test_it_issues_a_key_that_resolves_to_the_new_tenant(self, database: Database) -> None:
@@ -73,7 +71,6 @@ class TestProvisioningATenant:
                 )
         finally:
             app.dependency_overrides.clear()
-
 
 class TestTheCommandLine:
     def test_json_output_carries_the_key_and_tenant(

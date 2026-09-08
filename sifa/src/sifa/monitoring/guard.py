@@ -6,14 +6,12 @@ from dataclasses import dataclass, field
 from sifa.evaluation.metrics import expected_calibration_error
 from sifa.registry.models import ModelRegistry
 
-
 @dataclass(frozen=True, slots=True)
 class GuardThresholds:
     min_ctr_ratio: float = 0.85
     max_calibration_error: float = 0.15
     max_latency_ms: float = 250.0
     minimum_samples: int = 300
-
 
 @dataclass(slots=True)
 class ServingWindow:
@@ -45,7 +43,6 @@ class ServingWindow:
     def calibration_error(self) -> float:
         return expected_calibration_error(self.probabilities, self.outcomes)
 
-
 @dataclass(frozen=True, slots=True)
 class GuardVerdict:
     healthy: bool
@@ -53,7 +50,6 @@ class GuardVerdict:
     ctr_ratio: float
     calibration_error: float
     p95_latency_ms: float
-
 
 class RolloutGuard:
     def __init__(self, thresholds: GuardThresholds | None = None) -> None:

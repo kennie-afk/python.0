@@ -26,7 +26,6 @@ SYSTEM_PROMPT = (
 
 VALID_RECOMMENDATIONS = frozenset({"ADVANCE", "REVIEW", "HOLD"})
 
-
 @dataclass(frozen=True, slots=True)
 class ScreeningResult:
     subject_key: str
@@ -40,7 +39,6 @@ class ScreeningResult:
     @property
     def advances(self) -> bool:
         return self.recommendation == "ADVANCE"
-
 
 class CandidateScreener:
     def __init__(self, model: LanguageModel, anonymizer: AnonymizationEngine) -> None:

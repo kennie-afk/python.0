@@ -8,18 +8,14 @@ Normalizer = Callable[[str], str]
 
 _WHITESPACE = re.compile(r"\s+")
 
-
 def identity(value: str) -> str:
     return value
-
 
 def collapse_whitespace(value: str) -> str:
     return _WHITESPACE.sub(" ", value).strip()
 
-
 def casefold_text(value: str) -> str:
     return collapse_whitespace(value).casefold()
-
 
 def canonical_json(value: str) -> str:
     try:
@@ -28,7 +24,6 @@ def canonical_json(value: str) -> str:
         return collapse_whitespace(value)
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
-
 def chain(*normalizers: Normalizer) -> Normalizer:
     def apply(value: str) -> str:
         for normalizer in normalizers:
@@ -36,7 +31,6 @@ def chain(*normalizers: Normalizer) -> Normalizer:
         return value
 
     return apply
-
 
 BUILTIN: dict[str, Normalizer] = {
     "identity": identity,

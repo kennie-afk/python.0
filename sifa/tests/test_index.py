@@ -6,11 +6,9 @@ import pytest
 from sifa.core.errors import VectorIndexError
 from sifa.index.hnsw import HnswConfig, HnswIndex, cosine_distance, normalise
 
-
 @pytest.fixture
 def rng() -> np.random.Generator:
     return np.random.default_rng(11)
-
 
 def build(rng: np.random.Generator, n: int = 600, d: int = 32) -> tuple[HnswIndex, np.ndarray]:
     vectors = rng.normal(size=(n, d)).astype(np.float32)
@@ -18,7 +16,6 @@ def build(rng: np.random.Generator, n: int = 600, d: int = 32) -> tuple[HnswInde
     for i, vector in enumerate(vectors):
         index.add(f"item-{i}", vector)
     return index, vectors
-
 
 class TestGeometry:
     def test_a_vector_is_identical_to_itself(self) -> None:
@@ -35,7 +32,6 @@ class TestGeometry:
 
     def test_a_zero_vector_normalises_without_dividing_by_zero(self) -> None:
         assert np.all(normalise(np.zeros(4, dtype=np.float32)) == 0.0)
-
 
 class TestRecall:
     def test_it_finds_almost_everything_brute_force_finds(self, rng: np.random.Generator) -> None:
@@ -73,7 +69,6 @@ class TestRecall:
         results = index.search(rng.normal(size=32).astype(np.float32), 10)
         scores = [score for _, score in results]
         assert scores == sorted(scores, reverse=True)
-
 
 class TestBehaviour:
     def test_an_empty_index_returns_nothing_rather_than_failing(self) -> None:
