@@ -22,6 +22,7 @@ from sifa.policy.rules import (
 from sifa.ranking.ranker import LearningToRank
 from sifa.retrieval.two_tower import Retriever
 
+
 @dataclass(frozen=True, slots=True)
 class ServingConfig:
     retrieve_k: int = 200

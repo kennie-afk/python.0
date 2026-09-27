@@ -6,6 +6,7 @@ from sifa.core.errors import ExperimentError
 from sifa.experiments.assignment import Experiment, Variant, assign
 from sifa.experiments.sequential import Decision, MixtureSprt
 
+
 def build(holdout: float = 0.0) -> Experiment:
     return Experiment(
         key="feed_ranker",

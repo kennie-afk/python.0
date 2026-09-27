@@ -9,6 +9,7 @@ import numpy as np
 
 from sifa.core.errors import VectorIndexError
 
+
 def normalise(vector: np.ndarray) -> np.ndarray:
     array = np.asarray(vector, dtype=np.float32).reshape(-1)
     norm = float(np.linalg.norm(array))

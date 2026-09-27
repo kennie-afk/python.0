@@ -9,6 +9,7 @@ from sifa.core.clock import ensure_utc
 from sifa.core.errors import LeakageError, SchemaError
 from sifa.features.schema import FeatureView
 
+
 @dataclass(frozen=True, slots=True)
 class FeatureRow:
     entity_id: str
@@ -71,14 +72,23 @@ class FeatureStore:
             return resolved
 
         horizon = None if moment is None else moment - self._view.ttl
+        seen: set[str] = set()
 
         for index in range(cutoff - 1, -1, -1):
             row = rows[index]
             if horizon is not None and row.event_time < horizon:
                 break
             for name, value in row.values.items():
-                if name not in resolved or resolved[name] == self._view.spec(name).default:
+                # Once the most recent row carrying this feature has set it, no
+                # older row may touch it again — even if that newest value happens
+                # to equal the feature's default. Comparing against the default
+                # instead of tracking "already set" would let a genuinely-zero
+                # latest reading be overwritten by a stale nonzero one underneath
+                # it, which is exactly the kind of silent point-in-time leak this
+                # store exists to rule out.
+                if name not in seen:
                     resolved[name] = value
+                    seen.add(name)
 
         return resolved
 

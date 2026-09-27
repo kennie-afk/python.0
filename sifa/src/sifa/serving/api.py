@@ -13,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from sifa.core.errors import SifaError
-from sifa.serving.auth import require_api_key
 from sifa.registry.models import Stage
+from sifa.serving.auth import require_api_key
 from sifa.serving.platform import Platform
 from sifa.simulation.world import World, build_world
 

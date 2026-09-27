@@ -4,6 +4,7 @@ import pytest
 
 from sifa.bandits.thompson import ArmState, ThompsonSampler
 
+
 def test_uniform_prior_starts_at_one_half() -> None:
     assert ArmState().mean == pytest.approx(0.5)
 

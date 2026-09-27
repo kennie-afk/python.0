@@ -6,6 +6,7 @@ import pytest
 from sifa.core.errors import VectorIndexError
 from sifa.index.hnsw import HnswConfig, HnswIndex, cosine_distance, normalise
 
+
 @pytest.fixture
 def rng() -> np.random.Generator:
     return np.random.default_rng(11)

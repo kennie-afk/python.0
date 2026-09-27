@@ -9,6 +9,7 @@ from sklearn.linear_model import LogisticRegression
 from sifa.core.errors import NotTrainedError
 from sifa.core.types import Candidate, ScoredItem
 
+
 @dataclass(frozen=True, slots=True)
 class RankerConfig:
     feature_order: tuple[str, ...]

@@ -15,6 +15,7 @@ from sifa.evaluation.metrics import (
     recall_at_k,
 )
 
+
 def test_dcg_discounts_later_positions() -> None:
     assert dcg([1.0, 0.0]) > dcg([0.0, 1.0])
 

@@ -8,6 +8,7 @@ from typing import Any
 from sifa.core.clock import now
 from sifa.core.errors import RegistryError
 
+
 class Stage(StrEnum):
     DRAFT = "draft"
     SHADOW = "shadow"

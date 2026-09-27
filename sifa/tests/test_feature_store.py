@@ -96,6 +96,21 @@ class TestPointInTimeCorrectness:
 
         assert examples[0].features["clicks_7d"] == 5.0
 
+    def test_a_newest_value_that_equals_the_default_still_wins_over_a_stale_one(
+        self, store: FeatureStore
+    ) -> None:
+        # A user who genuinely had zero clicks in their most recent window must not
+        # have that zero overwritten by an older, nonzero reading underneath it. The
+        # "already resolved" check must track which features a newer row has already
+        # set, not infer it from whether the resolved value happens to equal the
+        # feature's default — 0.0 is both a legitimate reading and the default here.
+        store.write("u1", at(1), {"clicks_7d": 5.0})
+        store.write("u1", at(5), {"clicks_7d": 0.0})
+
+        examples = store.point_in_time_join([("u1", at(9), 1.0)])
+
+        assert examples[0].features["clicks_7d"] == 0.0
+
 class TestLeakageDetection:
     def test_a_correct_join_passes_the_audit(self, store: FeatureStore) -> None:
         store.write("u1", at(1), {"clicks_7d": 5.0})

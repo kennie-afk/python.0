@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from sifa.core.errors import ExperimentError
 
+
 @dataclass(frozen=True, slots=True)
 class Variant:
     name: str

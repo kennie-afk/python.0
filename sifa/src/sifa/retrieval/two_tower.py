@@ -8,6 +8,7 @@ from sifa.core.errors import NotTrainedError
 from sifa.core.types import Candidate
 from sifa.index.hnsw import HnswConfig, HnswIndex, normalise
 
+
 @dataclass(frozen=True, slots=True)
 class TwoTowerConfig:
     dimension: int = 64

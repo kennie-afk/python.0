@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from sifa.evaluation.metrics import expected_calibration_error
 from sifa.registry.models import ModelRegistry
 
+
 @dataclass(frozen=True, slots=True)
 class GuardThresholds:
     min_ctr_ratio: float = 0.85

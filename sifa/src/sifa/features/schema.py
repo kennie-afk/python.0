@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from sifa.core.errors import SchemaError
 
+
 class FeatureKind(StrEnum):
     NUMERIC = "numeric"
     CATEGORICAL = "categorical"

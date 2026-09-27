@@ -7,6 +7,7 @@ from sifa.core.errors import NotTrainedError
 from sifa.index.hnsw import HnswConfig
 from sifa.retrieval.two_tower import Retriever, TwoTowerConfig, TwoTowerModel
 
+
 def build_interactions() -> list[tuple[str, str]]:
     topics = {"sport": range(20), "food": range(20, 40), "code": range(40, 60)}
     interactions: list[tuple[str, str]] = []

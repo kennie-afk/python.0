@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+
 @dataclass(slots=True)
 class ArmState:
     successes: float = 1.0

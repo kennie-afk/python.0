@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
+
 @dataclass(frozen=True, slots=True)
 class DriftReport:
     feature: str

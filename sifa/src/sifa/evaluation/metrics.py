@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+
 def dcg(relevances: Sequence[float], k: int | None = None) -> float:
     limit = len(relevances) if k is None else min(k, len(relevances))
     total = sum((2.0 ** relevances[i] - 1.0) / math.log2(i + 2) for i in range(limit))

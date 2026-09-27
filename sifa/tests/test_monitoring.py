@@ -8,6 +8,7 @@ from sifa.monitoring.drift import detect_drift, population_stability_index
 from sifa.monitoring.guard import GuardThresholds, RolloutGuard, ServingWindow
 from sifa.registry.models import ModelRegistry, Stage
 
+
 @pytest.fixture
 def rng() -> np.random.Generator:
     return np.random.default_rng(2)

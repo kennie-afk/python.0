@@ -82,6 +82,15 @@ def test_mmr_keeps_the_best_item_first() -> None:
     picked = maximal_marginal_relevance(items, similarity_matrix(items, vectors), k=2, lambda_=0.5)
     assert picked[0].item_id == "a"
 
+def test_mmr_seeds_from_the_best_score_even_when_it_is_not_listed_first() -> None:
+    # The seed pick must be the highest-scoring item regardless of input order — MMR
+    # only trades relevance for diversity from the second pick onward. A caller that
+    # forgets to pre-sort its candidates must not silently get the wrong seed.
+    vectors = {"a": np.array([1.0, 0.0]), "b": np.array([1.0, 0.0]), "c": np.array([0.0, 1.0])}
+    items = [item("b", 0.85), item("a", 0.9), item("c", 0.4)]
+    picked = maximal_marginal_relevance(items, similarity_matrix(items, vectors), k=2, lambda_=0.5)
+    assert picked[0].item_id == "a"
+
 def test_mmr_drops_a_near_duplicate_for_something_different() -> None:
     vectors = {"a": np.array([1.0, 0.0]), "b": np.array([1.0, 0.0]), "c": np.array([0.0, 1.0])}
     items = [item("a", 0.9), item("b", 0.85), item("c", 0.4)]

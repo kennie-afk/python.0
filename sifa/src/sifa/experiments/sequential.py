@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from sifa.core.errors import ExperimentError
 
+
 class Decision(StrEnum):
     CONTINUE = "continue"
     TREATMENT_WINS = "treatment_wins"

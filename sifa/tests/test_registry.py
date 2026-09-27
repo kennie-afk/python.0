@@ -5,6 +5,7 @@ import pytest
 from sifa.core.errors import RegistryError
 from sifa.registry.models import ModelRegistry, Stage
 
+
 def promote(registry: ModelRegistry, name: str, version: int) -> None:
     registry.transition(name, version, Stage.SHADOW)
     registry.transition(name, version, Stage.CANARY)

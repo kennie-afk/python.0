@@ -9,6 +9,7 @@ import numpy as np
 
 from sifa.core.types import ScoredItem
 
+
 @dataclass(frozen=True, slots=True)
 class PolicyConfig:
     diversity_lambda: float = 0.3
@@ -103,7 +104,11 @@ def maximal_marginal_relevance(
     scores = np.array([item.score for item in items], dtype=np.float32)
     remaining = np.ones(len(items), dtype=bool)
 
-    first = 0
+    # The first pick is always the single best-scoring item, full stop — not
+    # whichever item happens to sit at index 0. MMR only trades relevance for
+    # diversity from the second pick onward; nothing should make the seed pick
+    # depend on the caller having pre-sorted its input.
+    first = int(np.argmax(scores))
     remaining[first] = False
     order = [first]
     worst = matrix[first].copy()
