@@ -87,19 +87,28 @@ def simulate(scenario: Scenario, months: int = 12) -> SimulationResult:
         raise SimulationError("a simulation must cover at least one month")
 
     headcount = float(scenario.starting_headcount)
-    ramping: list[tuple[int, int]] = []
+    ramping: list[tuple[int, float]] = []
     states: list[MonthState] = []
 
     for month in range(1, months + 1):
         leavers = headcount * scenario.monthly_attrition_rate
         headcount = max(0.0, headcount - leavers)
 
+        # Attrition removes people from the whole workforce, ramping hires
+        # included -- it is not only the already-tenured staff who leave. Thin
+        # every outstanding cohort by the same retention factor headcount just
+        # applied, or their tracked counts stop meaning "how many of these
+        # hires are still here" and start meaning "how many were ever hired",
+        # which can add up to more people than the actual headcount.
+        retention = 1.0 - scenario.monthly_attrition_rate
+        ramping = [(started, count * retention) for started, count in ramping]
+
         joiners = scenario.monthly_hires
         if joiners:
-            ramping.append((month, joiners))
+            ramping.append((month, float(joiners)))
         headcount += joiners
 
-        still_ramping: list[tuple[int, int]] = []
+        still_ramping: list[tuple[int, float]] = []
         effective = 0.0
         for started, count in ramping:
             elapsed = month - started

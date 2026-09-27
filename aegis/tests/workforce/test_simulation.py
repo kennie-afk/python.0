@@ -82,6 +82,27 @@ class TestRamp:
 
         assert result.months[0].effective_capacity == pytest.approx(10.0)
 
+    def test_attrition_thins_ramping_cohorts_too_not_only_tenured_staff(self) -> None:
+        # Attrition is applied to the whole workforce, ramping hires included.
+        # If a ramping cohort's tracked size never shrinks with it, the model
+        # ends up believing more people are still mid-ramp than the actual
+        # headcount contains -- effective capacity must never exceed headcount.
+        result = simulate(
+            scenario(
+                starting_headcount=0,
+                monthly_hires=100,
+                hire_ramp_months=3,
+                monthly_attrition_rate=0.5,
+            ),
+            months=6,
+        )
+
+        for month in result.months:
+            assert month.effective_capacity <= month.headcount + 1e-6, (
+                f"month {month.month}: effective capacity {month.effective_capacity} "
+                f"exceeds headcount {month.headcount}"
+            )
+
 class TestDemand:
     def test_capacity_below_demand_is_a_shortfall(self) -> None:
         result = simulate(
