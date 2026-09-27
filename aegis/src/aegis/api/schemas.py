@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
 class StartRunRequest(BaseModel):
     workflow: str = Field(description="workflow name from the catalogue")
     subject_id: str = Field(min_length=1, max_length=200)

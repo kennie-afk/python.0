@@ -5,6 +5,7 @@ import json
 from aegis.reasoning.deterministic import DeterministicModel
 from aegis.reasoning.provider import Prompt
 
+
 def complete(requirement: str, **attributes: object) -> dict[str, object]:
     lines = [f"role_requirement: {requirement}", "candidate_brief:"]
     lines.extend(f"  {key}: {value}" for key, value in attributes.items())

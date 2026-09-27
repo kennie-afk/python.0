@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+
 class ActionType(StrEnum):
     SCORE_CANDIDATE = "SCORE_CANDIDATE"
     SHORTLIST_CANDIDATE = "SHORTLIST_CANDIDATE"

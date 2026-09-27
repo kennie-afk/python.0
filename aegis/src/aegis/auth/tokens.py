@@ -8,6 +8,7 @@ from uuid import UUID
 
 import jwt
 
+
 class AuthError(Exception):
     pass
 

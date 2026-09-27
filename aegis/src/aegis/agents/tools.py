@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from aegis.governance.actions import ActionType, ProposedAction
 
+
 @dataclass(frozen=True, slots=True)
 class ToolResult:
     succeeded: bool

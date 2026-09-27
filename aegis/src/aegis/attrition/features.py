@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from aegis.anonymization.engine import PROTECTED_ATTRIBUTES
 
+
 class FeatureError(ValueError):
     pass
 

@@ -5,6 +5,7 @@ from itertools import pairwise
 
 from aegis.ledger import GENESIS, DecisionLedger
 
+
 def ledger_with(count: int) -> DecisionLedger:
     ledger = DecisionLedger()
     for index in range(count):
@@ -92,6 +93,30 @@ class TestTamperEvidence:
     def test_reordering_entries_is_detected(self) -> None:
         ledger = ledger_with(4)
         ledger._entries[1], ledger._entries[2] = ledger._entries[2], ledger._entries[1]
+
+        assert not ledger.verify().intact
+
+    def test_merging_two_reasons_across_the_join_boundary_is_detected(self) -> None:
+        # "reasons" is a tuple, flattened into one field before hashing. Flattening
+        # it with a plain "|" join is not collision-resistant on its own: ("a", "b")
+        # and ("a|b",) join to the identical string, so rewriting one into the
+        # other must not be able to hide behind an unchanged entry_hash.
+        ledger = DecisionLedger()
+        ledger.append(
+            tenant_id="tenant-1",
+            workflow="talent_acquisition",
+            run_id="run-1",
+            step="screen",
+            action_type="REJECT_CANDIDATE",
+            subject_id="candidate-42",
+            agent="aegis-runtime",
+            outcome="REJECTED",
+            reasons=("failed background check", "disclosed pregnancy"),
+        )
+        ledger._entries[0] = dataclasses.replace(
+            ledger.entries[0],
+            reasons=("failed background check|disclosed pregnancy",),
+        )
 
         assert not ledger.verify().intact
 

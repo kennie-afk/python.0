@@ -7,6 +7,7 @@ from enum import StrEnum
 
 from aegis.verification.normalizers import Normalizer, identity
 
+
 class Stability(StrEnum):
     DETERMINISTIC = "DETERMINISTIC"
     NEAR_DETERMINISTIC = "NEAR_DETERMINISTIC"

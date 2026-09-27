@@ -45,6 +45,16 @@ def _canonical(
     parts.extend("" if value is None else value for value in fields)
     return "".join(f"{len(part)}:{part}" for part in parts)
 
+def _encode_reasons(reasons: Sequence[str]) -> str:
+    # Length-prefix each reason individually rather than joining with "|". A plain
+    # join is not collision-resistant: ("a", "b") and ("a|b",) join to the same
+    # string, so an entry recorded with two separate reasons is byte-identical,
+    # post-join, to one recorded with a single reason that merely contains a "|" -
+    # meaning either could be silently rewritten into the other without touching
+    # entry_hash. Length-prefixing closes that the same way the outer canonical
+    # encoding already does for every other field.
+    return "".join(f"{len(reason)}:{reason}" for reason in reasons)
+
 def make_entry(
     sequence: int,
     previous_hash: str,
@@ -74,7 +84,7 @@ def make_entry(
             subject_id,
             agent,
             outcome,
-            "|".join(reason_tuple),
+            _encode_reasons(reason_tuple),
             approver,
         ],
         recorded_at,
@@ -173,7 +183,7 @@ class DecisionLedger:
                     entry.subject_id,
                     entry.agent,
                     entry.outcome,
-                    "|".join(entry.reasons),
+                    _encode_reasons(entry.reasons),
                     entry.approver,
                 ],
                 entry.recorded_at,

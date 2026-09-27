@@ -5,6 +5,7 @@ from enum import StrEnum
 
 from aegis.governance.actions import ActionType, RestrictedDomain
 
+
 class Verdict(StrEnum):
     ALLOW = "ALLOW"
     REQUIRE_HUMAN_APPROVAL = "REQUIRE_HUMAN_APPROVAL"

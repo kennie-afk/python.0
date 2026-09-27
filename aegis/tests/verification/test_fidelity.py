@@ -12,6 +12,7 @@ from aegis.verification import (
 )
 from aegis.verification.determinism import DeterminismReport
 
+
 def determinism(stability: Stability, case: str = "screening") -> DeterminismReport:
     return DeterminismReport(
         case=case,

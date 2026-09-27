@@ -4,6 +4,7 @@ import pytest
 
 from aegis.workforce import Scenario, SimulationError, compare, hires_required, simulate
 
+
 def scenario(**overrides: object) -> Scenario:
     base = {
         "name": "baseline",

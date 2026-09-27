@@ -12,6 +12,7 @@ from aegis.auth.tokens import hash_api_key
 from aegis.cli import provision_tenant
 from aegis.persistence import ApiKeyRepository, Database, PolicyRepository
 
+
 @pytest.fixture
 def database() -> Iterator[Database]:
     db = Database("sqlite+pysqlite:///:memory:")

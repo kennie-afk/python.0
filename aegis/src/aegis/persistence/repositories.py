@@ -22,6 +22,7 @@ from aegis.hr.workflows import CATALOGUE
 from aegis.ledger.record import GENESIS, DecisionLedger, IntegrityReport, LedgerEntry
 from aegis.persistence.models import ApiKeyRow, LedgerRow, ModelRow, RunRow, StepRow, TenantRow
 
+
 class UnknownWorkflowError(LookupError):
     pass
 

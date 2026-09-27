@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from aegis.agents.tools import ToolResult
 from aegis.governance.actions import ActionType, ProposedAction
 
+
 class CalendarError(RuntimeError):
     pass
 

@@ -13,6 +13,7 @@ from aegis.verification import (
     collapse_whitespace,
 )
 
+
 def constant(value: str):
     return lambda: value
 

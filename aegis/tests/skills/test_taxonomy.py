@@ -15,6 +15,7 @@ from aegis.skills import (
     rank_roles,
 )
 
+
 def taxonomy() -> SkillTaxonomy:
     return SkillTaxonomy(
         [

@@ -11,6 +11,7 @@ from aegis.skills.taxonomy import (
     TaxonomyError,
 )
 
+
 @dataclass(frozen=True, slots=True)
 class OpenRole:
     role_id: str

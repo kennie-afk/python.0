@@ -10,6 +10,7 @@ from aegis.bias import (
     selection_outcomes,
 )
 
+
 class TestFourFifthsRule:
     def test_equal_selection_rates_show_no_adverse_impact(self) -> None:
         report = four_fifths_test(

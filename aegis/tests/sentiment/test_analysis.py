@@ -11,6 +11,7 @@ from aegis.sentiment import (
     score_text,
 )
 
+
 def responses(group: str, texts: list[str]) -> list[Response]:
     return [Response(group=group, text=text) for text in texts]
 

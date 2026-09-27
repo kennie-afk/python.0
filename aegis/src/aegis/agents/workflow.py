@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from aegis.governance.actions import ActionType
 
+
 class StepStatus(StrEnum):
     PENDING = "PENDING"
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
