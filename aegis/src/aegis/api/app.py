@@ -7,6 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from aegis.agents.runtime import (
@@ -153,10 +154,13 @@ class Platform:
     def screener(self) -> CandidateScreener:
         return CandidateScreener(self.model, self.anonymizer())
 
+_LEDGER_APPEND_RETRIES = 5
+
 class PersistentLedger(DecisionLedger):
     def __init__(self, session: Session, tenant: str) -> None:
         super().__init__()
         self._tenant = tenant
+        self._session = session
         self._repository = LedgerRepository(session)
         self._sequence, self._head = self._repository.head(tenant)
 
@@ -177,24 +181,42 @@ class PersistentLedger(DecisionLedger):
         reasons: Sequence[str] = (),
         approver: str | None = None,
     ) -> LedgerEntry:
-        entry = make_entry(
-            sequence=self._sequence,
-            previous_hash=self._head,
-            tenant_id=self._tenant,
-            workflow=workflow,
-            run_id=run_id,
-            step=step,
-            action_type=action_type,
-            subject_id=subject_id,
-            agent=agent,
-            outcome=outcome,
-            reasons=reasons,
-            approver=approver,
-        )
-        self._repository.append(self._tenant, entry)
-        self._sequence += 1
-        self._head = entry.entry_hash
-        return entry
+        # Two concurrent requests for the same tenant can both cache the same
+        # (sequence, previous_hash) pair and race to insert it. Re-read the head
+        # fresh on every attempt and retry on the unique-constraint conflict
+        # rather than trusting the value cached at construction time - that
+        # cached value is what a concurrent sibling request may have already
+        # invalidated by the time this append actually runs.
+        last_error: IntegrityError | None = None
+        for _ in range(_LEDGER_APPEND_RETRIES):
+            sequence, previous_hash = self._repository.head(tenant_id)
+            entry = make_entry(
+                sequence=sequence,
+                previous_hash=previous_hash,
+                tenant_id=self._tenant,
+                workflow=workflow,
+                run_id=run_id,
+                step=step,
+                action_type=action_type,
+                subject_id=subject_id,
+                agent=agent,
+                outcome=outcome,
+                reasons=reasons,
+                approver=approver,
+            )
+            try:
+                with self._session.begin_nested():
+                    self._repository.append(self._tenant, entry)
+            except IntegrityError as error:
+                last_error = error
+                continue
+            self._sequence = sequence + 1
+            self._head = entry.entry_hash
+            return entry
+        raise RuntimeError(
+            f"could not append to {tenant_id!r} ledger after "
+            f"{_LEDGER_APPEND_RETRIES} attempts: contention on the sequence"
+        ) from last_error
 
 _platform: Platform | None = None
 
@@ -400,10 +422,18 @@ def start_run(request: StartRunRequest, caller: PrincipalDep, platform: Platform
         RunRepository(session).save(run)
         return _view(run, runtime)
 
+_RUNS_PAGE_DEFAULT = 100
+_RUNS_PAGE_MAX = 500
+
 @app.get("/v1/runs")
-def list_runs(caller: PrincipalDep, platform: PlatformDep) -> list[RunView]:
+def list_runs(
+    caller: PrincipalDep, platform: PlatformDep, limit: int = _RUNS_PAGE_DEFAULT, offset: int = 0
+) -> list[RunView]:
+    bounded_limit = max(1, min(limit, _RUNS_PAGE_MAX))
     with platform.database.session() as session:
-        runs = RunRepository(session).for_tenant(caller.tenant_id)
+        runs = RunRepository(session).for_tenant(
+            caller.tenant_id, limit=bounded_limit, offset=max(0, offset)
+        )
         runtime = platform.runtime(session, caller.tenant_id)
         return [_view(run, runtime) for run in runs]
 
@@ -654,10 +684,21 @@ def score_employees(
         for score in scores
     ]
 
+_LEDGER_PAGE_DEFAULT = 200
+_LEDGER_PAGE_MAX = 1000
+
 @app.get("/v1/ledger")
-def read_ledger(caller: PrincipalDep, platform: PlatformDep) -> list[LedgerEntryView]:
+def read_ledger(
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    after: int | None = None,
+    limit: int = _LEDGER_PAGE_DEFAULT,
+) -> list[LedgerEntryView]:
+    bounded_limit = max(1, min(limit, _LEDGER_PAGE_MAX))
     with platform.database.session() as session:
-        entries = LedgerRepository(session).entries(caller.tenant_id)
+        entries = LedgerRepository(session).entries(
+            caller.tenant_id, after_sequence=after, limit=bounded_limit
+        )
 
     return [
         LedgerEntryView(

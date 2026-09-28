@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -64,10 +65,11 @@ def employee(index: int, leaving: bool) -> dict[str, float | int | str]:
     }
 
 def cohort(size: int = 120) -> tuple[list[dict[str, object]], list[bool]]:
-    employees, left = [], []
+    employees: list[dict[str, object]] = []
+    left: list[bool] = []
     for index in range(size):
         leaving = index % 2 == 0
-        employees.append(employee(index, leaving))
+        employees.append(cast("dict[str, object]", employee(index, leaving)))
         left.append(leaving)
     return employees, left
 
@@ -432,7 +434,7 @@ class TestComplianceEndpoints:
         assert response.status_code == 409
 
 class TestRetryingAFailedStep:
-    def _run_through_to(self, client: TestClient, auth: dict[str, str], slot: str) -> dict:
+    def _run_through_to(self, client: TestClient, auth: dict[str, str], slot: str) -> dict[str, Any]:
         context = dict(CONTEXT) | {"starts_at": slot}
         created = client.post(
             "/v1/runs",
@@ -443,11 +445,12 @@ class TestRetryingAFailedStep:
             },
             headers=auth,
         ).json()
-        return client.post(
+        result: dict[str, Any] = client.post(
             f"/v1/runs/{created['run_id']}/steps/shortlist/approve",
             json={"approver": "recruiter@example.com"},
             headers=auth,
         ).json()
+        return result
 
     def test_a_double_booking_fails_the_second_run(
         self, client: TestClient, auth: dict[str, str]

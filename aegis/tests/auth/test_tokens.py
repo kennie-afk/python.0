@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import jwt
@@ -19,7 +20,7 @@ from aegis.auth import (
 SECRET = "a-signing-secret-that-is-long-enough-to-use"
 TENANT = "88888888-8888-8888-8888-888888888888"
 
-def service(**kwargs: object) -> TokenService:
+def service(**kwargs: Any) -> TokenService:
     return TokenService(secret=SECRET, **kwargs)
 
 class TestMintingAndVerifying:

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from aegis.reasoning.deterministic import DeterministicModel
 from aegis.reasoning.provider import Prompt
 
 
-def complete(requirement: str, **attributes: object) -> dict[str, object]:
+def complete(requirement: str, **attributes: object) -> dict[str, Any]:
     lines = [f"role_requirement: {requirement}", "candidate_brief:"]
     lines.extend(f"  {key}: {value}" for key, value in attributes.items())
     prompt = Prompt(system="assess the brief", user="\n".join(lines))
-    return json.loads(DeterministicModel().complete(prompt).text)
+    result: dict[str, Any] = json.loads(DeterministicModel().complete(prompt).text)
+    return result
 
 def test_experience_short_of_the_requirement_does_not_advance() -> None:
     result = complete("five years of backend engineering", years_experience=2)

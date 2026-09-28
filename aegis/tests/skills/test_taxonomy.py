@@ -6,6 +6,7 @@ from aegis.skills import (
     OpenRole,
     Proficiency,
     Skill,
+    SkillProfile,
     SkillRequirement,
     SkillTaxonomy,
     TaxonomyError,
@@ -26,7 +27,7 @@ def taxonomy() -> SkillTaxonomy:
         ]
     )
 
-def profile(subject: str = "subj_1", years: dict[str, float] | None = None):
+def profile(subject: str = "subj_1", years: dict[str, float] | None = None) -> SkillProfile:
     return taxonomy().extract(
         subject,
         [

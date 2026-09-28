@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from aegis.workforce import Scenario, SimulationError, compare, hires_required, simulate
 
 
 def scenario(**overrides: object) -> Scenario:
-    base = {
+    base: dict[str, Any] = {
         "name": "baseline",
         "starting_headcount": 100,
         "monthly_attrition_rate": 0.01,

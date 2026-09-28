@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from aegis.agents import AgentRuntime, RecordingTool, StepStatus, ToolRegistry
+from aegis.agents import AgentRuntime, RecordingTool, StepStatus, ToolRegistry, WorkflowRun
 from aegis.governance import ActionType, GovernanceGate, RestrictedDomain, TenantPolicy
 from aegis.hr.workflows import ONBOARDING, TALENT_ACQUISITION
 from aegis.ledger import DecisionLedger
@@ -35,7 +35,7 @@ def database() -> Iterator[Database]:
     yield db
     db.dispose()
 
-def make_run(policy: TenantPolicy | None = None):
+def make_run(policy: TenantPolicy | None = None) -> tuple[AgentRuntime, WorkflowRun]:
     tools = ToolRegistry()
     tools.register(RecordingTool(frozenset(ActionType), output={"ok": True}))
     runtime = AgentRuntime(
@@ -217,6 +217,34 @@ class TestLedgerPersistence:
 
         assert sequence == 0
         assert head == "0" * 64
+
+    def test_entries_page_by_sequence_cursor(self, database: Database) -> None:
+        ledger = DecisionLedger()
+        with database.session() as session:
+            repository = LedgerRepository(session)
+            for index in range(5):
+                repository.append(
+                    TENANT,
+                    ledger.append(
+                        tenant_id=TENANT,
+                        workflow="talent_acquisition",
+                        run_id="run-1",
+                        step=f"step_{index}",
+                        action_type="SCORE_CANDIDATE",
+                        subject_id="candidate-42",
+                        agent="sourcing-agent",
+                        outcome="COMPLETED",
+                    ),
+                )
+
+        with database.session() as session:
+            first_page = LedgerRepository(session).entries(TENANT, limit=2)
+            second_page = LedgerRepository(session).entries(
+                TENANT, after_sequence=first_page[-1].sequence, limit=2
+            )
+
+        assert [entry.sequence for entry in first_page] == [0, 1]
+        assert [entry.sequence for entry in second_page] == [2, 3]
 
     def test_one_tenants_entries_are_invisible_to_another(self, database: Database) -> None:
         ledger = DecisionLedger()

@@ -76,12 +76,15 @@ class RunRepository:
         ).all()
         return tuple(self._rebuild(row, CATALOGUE[row.workflow]) for row in rows)
 
-    def for_tenant(self, tenant_id: str, limit: int = 100) -> tuple[WorkflowRun, ...]:
+    def for_tenant(
+        self, tenant_id: str, limit: int = 100, offset: int = 0
+    ) -> tuple[WorkflowRun, ...]:
         rows = self._session.scalars(
             select(RunRow)
             .where(RunRow.tenant_id == tenant_id)
             .order_by(RunRow.created_at.desc())
             .limit(limit)
+            .offset(offset)
         ).all()
         return tuple(self._rebuild(row, CATALOGUE[row.workflow]) for row in rows)
 
@@ -141,12 +144,24 @@ class LedgerRepository:
         ).first()
         return (row.sequence + 1, row.entry_hash) if row else (0, GENESIS)
 
-    def entries(self, tenant_id: str, subject_id: str | None = None) -> tuple[LedgerEntry, ...]:
+    def entries(
+        self,
+        tenant_id: str,
+        subject_id: str | None = None,
+        after_sequence: int | None = None,
+        limit: int | None = None,
+    ) -> tuple[LedgerEntry, ...]:
         statement = select(LedgerRow).where(LedgerRow.tenant_id == tenant_id)
         if subject_id:
             statement = statement.where(LedgerRow.subject_id == subject_id)
+        if after_sequence is not None:
+            statement = statement.where(LedgerRow.sequence > after_sequence)
 
-        rows = self._session.scalars(statement.order_by(LedgerRow.sequence)).all()
+        statement = statement.order_by(LedgerRow.sequence)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        rows = self._session.scalars(statement).all()
         return tuple(
             LedgerEntry(
                 sequence=row.sequence,

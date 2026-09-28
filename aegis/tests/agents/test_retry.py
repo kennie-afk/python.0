@@ -18,7 +18,7 @@ from aegis.agents import (
     WorkflowDefinition,
     WorkflowRun,
 )
-from aegis.governance import ActionType, GovernanceGate, TenantPolicy
+from aegis.governance import ActionType, GovernanceGate, ProposedAction, TenantPolicy
 from aegis.ledger import DecisionLedger
 
 TENANT = uuid4()
@@ -50,7 +50,7 @@ class ClashingCalendar(Tool):
     def handles(self) -> frozenset[ActionType]:
         return frozenset({ActionType.SCHEDULE_INTERVIEW})
 
-    def execute(self, action):
+    def execute(self, action: ProposedAction) -> ToolResult:
         slot = str(action.payload.get("starts_at"))
         self.calls.append(slot)
         if slot == self._taken:

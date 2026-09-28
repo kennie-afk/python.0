@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+from collections.abc import Callable
 
 import pytest
 
@@ -14,10 +15,10 @@ from aegis.verification import (
 )
 
 
-def constant(value: str):
+def constant(value: str) -> Callable[[], str]:
     return lambda: value
 
-def cycling(values: list[str]):
+def cycling(values: list[str]) -> Callable[[], str]:
     iterator = itertools.cycle(values)
     return lambda: next(iterator)
 
