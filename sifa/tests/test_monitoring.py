@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import cast
+
 import numpy as np
 import pytest
 
@@ -16,26 +19,39 @@ def rng() -> np.random.Generator:
 class TestPopulationStabilityIndex:
     def test_a_distribution_against_itself_scores_zero(self, rng: np.random.Generator) -> None:
         sample = rng.normal(0, 1, 4000)
-        assert population_stability_index(sample, sample.copy()) == pytest.approx(0.0, abs=1e-9)
+        assert population_stability_index(
+            cast(Sequence[float], sample), cast(Sequence[float], sample.copy())
+        ) == pytest.approx(0.0, abs=1e-9)
 
     def test_a_mean_shift_registers(self, rng: np.random.Generator) -> None:
         sample = rng.normal(0, 1, 4000)
-        assert population_stability_index(sample, sample + 1.0) > 0.25
+        shifted = cast(Sequence[float], sample + 1.0)
+        assert population_stability_index(cast(Sequence[float], sample), shifted) > 0.25
 
     def test_float_noise_on_a_binary_feature_is_not_drift(self, rng: np.random.Generator) -> None:
         binary = (rng.random(4000) < 0.5).astype(float)
         noisy = binary + rng.normal(0, 1e-6, 4000)
-        assert population_stability_index(binary, noisy) < 0.01
+        assert (
+            population_stability_index(cast(Sequence[float], binary), cast(Sequence[float], noisy))
+            < 0.01
+        )
 
     def test_a_real_shift_in_a_binary_feature_registers(self, rng: np.random.Generator) -> None:
         balanced = (rng.random(4000) < 0.5).astype(float)
         skewed = (rng.random(4000) < 0.85).astype(float)
-        assert population_stability_index(balanced, skewed) > 0.25
+        balanced_seq = cast(Sequence[float], balanced)
+        skewed_seq = cast(Sequence[float], skewed)
+        assert population_stability_index(balanced_seq, skewed_seq) > 0.25
 
     def test_categorical_reweighting_registers(self, rng: np.random.Generator) -> None:
         categories = rng.integers(0, 5, 4000).astype(float)
         reweighted = np.where(rng.random(4000) < 0.5, 4.0, categories)
-        assert population_stability_index(categories, reweighted) > 0.25
+        assert (
+            population_stability_index(
+                cast(Sequence[float], categories), cast(Sequence[float], reweighted)
+            )
+            > 0.25
+        )
 
     def test_too_little_data_reports_nothing_rather_than_guessing(self) -> None:
         assert population_stability_index([1.0], [2.0]) == 0.0
@@ -43,20 +59,25 @@ class TestPopulationStabilityIndex:
 class TestDriftReports:
     def test_a_stable_feature_is_reported_stable(self, rng: np.random.Generator) -> None:
         sample = rng.normal(0, 1, 3000)
-        report = detect_drift("f", sample, sample + rng.normal(0, 1e-9, 3000))
+        near_identical = cast(Sequence[float], sample + rng.normal(0, 1e-9, 3000))
+        report = detect_drift("f", cast(Sequence[float], sample), near_identical)
         assert report.severity == "stable"
         assert report.drifted is False
 
     def test_a_shifted_feature_raises_an_alert(self, rng: np.random.Generator) -> None:
         sample = rng.normal(0, 1, 3000)
-        report = detect_drift("f", sample, rng.normal(1.5, 1, 3000))
+        report = detect_drift(
+            "f", cast(Sequence[float], sample), cast(Sequence[float], rng.normal(1.5, 1, 3000))
+        )
         assert report.severity == "alert"
         assert report.drifted is True
 
     def test_the_verdict_is_a_plain_bool_so_it_can_be_serialised(
         self, rng: np.random.Generator
     ) -> None:
-        report = detect_drift("f", rng.normal(0, 1, 500), rng.normal(3, 1, 500))
+        stable = cast(Sequence[float], rng.normal(0, 1, 500))
+        shifted = cast(Sequence[float], rng.normal(3, 1, 500))
+        report = detect_drift("f", stable, shifted)
         assert type(report.drifted) is bool
 
 class TestRegistryLifecycle:

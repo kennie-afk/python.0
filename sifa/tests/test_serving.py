@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,7 +17,7 @@ def platform() -> Platform:
     return Platform(world=build_world(n_users=90, n_items=220, seed=31))
 
 @pytest.fixture(scope="module")
-def client(platform: Platform) -> TestClient:
+def client(platform: Platform) -> Iterator[TestClient]:
     app.dependency_overrides[get_platform] = lambda: platform
     with TestClient(app, headers={"X-Api-Key": TEST_API_KEY}) as test_client:
         yield test_client

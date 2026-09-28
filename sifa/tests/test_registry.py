@@ -56,7 +56,9 @@ def test_going_live_takes_all_traffic() -> None:
     registry = ModelRegistry()
     registry.register("ranker", payload=None)
     promote(registry, "ranker", 1)
-    assert registry.live("ranker").traffic == pytest.approx(1.0)
+    live = registry.live("ranker")
+    assert live is not None
+    assert live.traffic == pytest.approx(1.0)
 
 def test_a_new_live_model_archives_the_previous_one() -> None:
     registry = ModelRegistry()
@@ -67,7 +69,9 @@ def test_a_new_live_model_archives_the_previous_one() -> None:
 
     assert registry.get("ranker", 1).stage is Stage.ARCHIVED
     assert registry.get("ranker", 1).traffic == 0.0
-    assert registry.live("ranker").version == 2
+    live = registry.live("ranker")
+    assert live is not None
+    assert live.version == 2
 
 def test_rollback_restores_the_last_archived_version() -> None:
     registry = ModelRegistry()
@@ -98,7 +102,9 @@ def test_rollback_prefers_the_canary_over_the_live_model() -> None:
     registry.rollback("ranker", "canary regressed")
 
     assert registry.get("ranker", 2).stage is Stage.ROLLED_BACK
-    assert registry.live("ranker").version == 1
+    live = registry.live("ranker")
+    assert live is not None
+    assert live.version == 1
 
 def test_rollback_without_anything_serving_is_refused() -> None:
     registry = ModelRegistry()

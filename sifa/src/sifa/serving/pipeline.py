@@ -165,7 +165,7 @@ class FeedPipeline:
             return selected
 
         result = list(selected)
-        for _ in range(min(slots, len(reserve))):
+        for offset in range(min(slots, len(reserve), len(result))):
             arm = self._sampler.select(arms)
             pick = next(
                 (
@@ -179,7 +179,7 @@ class FeedPipeline:
             if pick is None:
                 continue
             chosen.add(pick.item_id)
-            result[-1] = ScoredItem(
+            result[-1 - offset] = ScoredItem(
                 item_id=pick.item_id,
                 score=pick.score,
                 retrieval_score=pick.retrieval_score,
