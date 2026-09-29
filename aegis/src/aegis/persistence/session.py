@@ -39,6 +39,10 @@ class Database:
     def engine(self) -> Engine:
         return self._engine
 
+    @property
+    def is_sqlite(self) -> bool:
+        return self._engine.dialect.name == "sqlite"
+
     def create_all(self) -> None:
         Base.metadata.create_all(self._engine)
 

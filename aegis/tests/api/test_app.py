@@ -434,7 +434,9 @@ class TestComplianceEndpoints:
         assert response.status_code == 409
 
 class TestRetryingAFailedStep:
-    def _run_through_to(self, client: TestClient, auth: dict[str, str], slot: str) -> dict[str, Any]:
+    def _run_through_to(
+        self, client: TestClient, auth: dict[str, str], slot: str
+    ) -> dict[str, Any]:
         context = dict(CONTEXT) | {"starts_at": slot}
         created = client.post(
             "/v1/runs",

@@ -164,6 +164,13 @@ class TestRunPersistence:
         assert restored.context["role"] == "engineer"
 
 class TestLedgerPersistence:
+    def test_lock_tenant_is_a_no_op_on_sqlite(self, database: Database) -> None:
+        """Advisory locks are a Postgres feature the test database does not have;
+        lock_tenant must not raise here, and a real Postgres deployment is what
+        tools/ledger_concurrency_check.py proves serialises concurrent appends."""
+        with database.session() as session:
+            LedgerRepository(session).lock_tenant(TENANT)
+
     def test_entries_persist_and_verify_intact(self, database: Database) -> None:
         with database.session() as session:
             repository = LedgerRepository(session)

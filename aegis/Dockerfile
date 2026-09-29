@@ -22,7 +22,8 @@ WORKDIR /app
 COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 COPY --chown=aegis:aegis src ./src
-COPY --chown=aegis:aegis pyproject.toml README.md ./
+COPY --chown=aegis:aegis pyproject.toml README.md alembic.ini ./
+COPY --chown=aegis:aegis migrations ./migrations
 
 USER aegis
 EXPOSE 8000
@@ -30,4 +31,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
 
-CMD ["uvicorn", "aegis.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn aegis.api.app:app --host 0.0.0.0 --port 8000"]

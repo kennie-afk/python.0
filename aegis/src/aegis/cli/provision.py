@@ -67,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     database = Database(args.database_url) if args.database_url else Database()
-    database.create_all()
+    if database.is_sqlite:
+        database.create_all()
 
     try:
         tenant = provision_tenant(

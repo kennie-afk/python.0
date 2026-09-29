@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from aegis.agents.workflow import (
@@ -134,6 +134,18 @@ class LedgerRepository:
             )
         )
         self._session.flush()
+
+    def lock_tenant(self, tenant_id: str) -> None:
+        """Serialise ledger appends for one tenant so concurrent writers queue for the
+        advisory lock instead of racing on `head()` and burning through the append
+        retry budget. Transaction-scoped: released automatically when the request's
+        session commits or rolls back. A no-op on sqlite (tests), which has no
+        advisory locks and, being a single in-memory connection, no real concurrency
+        to serialise in the first place."""
+        if self._session.get_bind().dialect.name == "sqlite":
+            return
+        key = UUID(tenant_id).int & 0x7FFFFFFFFFFFFFFF
+        self._session.execute(select(func.pg_advisory_xact_lock(key)))
 
     def head(self, tenant_id: str) -> tuple[int, str]:
         row = self._session.scalars(

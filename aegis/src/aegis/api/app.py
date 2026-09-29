@@ -114,7 +114,11 @@ def _required_secret(name: str, minimum: int) -> str:
 class Platform:
     def __init__(self, database: Database | None = None, model: LanguageModel | None = None):
         self.database = database or Database()
-        self.database.create_all()
+        if self.database.is_sqlite:
+            # Postgres schema is versioned through Alembic (see migrations/) and
+            # created by `alembic upgrade head` before this process starts; only
+            # the ephemeral sqlite databases tests use get their schema implicitly.
+            self.database.create_all()
         self.salt = _required_secret("AEGIS_ANONYMISATION_SALT", MIN_SALT_LENGTH)
         self.tokens = TokenService(
             secret=_required_secret("AEGIS_JWT_SECRET", MIN_SIGNING_SECRET_LENGTH)
@@ -187,6 +191,7 @@ class PersistentLedger(DecisionLedger):
         # rather than trusting the value cached at construction time - that
         # cached value is what a concurrent sibling request may have already
         # invalidated by the time this append actually runs.
+        self._repository.lock_tenant(tenant_id)
         last_error: IntegrityError | None = None
         for _ in range(_LEDGER_APPEND_RETRIES):
             sequence, previous_hash = self._repository.head(tenant_id)

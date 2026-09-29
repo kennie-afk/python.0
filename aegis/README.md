@@ -76,8 +76,11 @@ HR action it is unable to explain.
 
 ## Workflows
 
-Hiring runs `Sourcing → Match Score → Engagement → Scheduling → Offer`. Under a conservative
-policy the first four steps run autonomously and the offer stops for a human. Onboarding runs
+Hiring runs `Source → Shortlist → Engage → Schedule → Offer`. Under a conservative policy,
+scoring a candidate runs autonomously and the workflow then stops for a human at shortlisting —
+deciding who continues in the funnel is deliberately not delegated, even before reaching the
+irreversible offer step (see `test_shortlisting_is_not_delegated_under_a_conservative_policy`).
+Onboarding runs
 documentation, verification, background check, hardware, provisioning, learning path and
 milestone check-ins — where the background check parks the run for days awaiting a provider and
 resumes when the result arrives, with the verdict flowing into the steps that follow.
@@ -215,10 +218,6 @@ alembic upgrade head
 Schema is versioned rather than created implicitly, and the initial revision applies and
 reverses cleanly.
 
-## Not yet built
-
-A web interface. The platform is API-first and every capability is reachable over HTTP, but
-there is no front end.
 
 
 ## Running it
