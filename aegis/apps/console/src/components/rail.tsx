@@ -29,7 +29,7 @@ export function Rail({ items }: { items: RailItem[] }) {
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[0.625rem] font-medium transition-colors ${
+              className={`flex flex-col items-center gap-1 rounded-md px-1 py-2.5 text-[0.625rem] font-medium transition-colors ${
                 active
                   ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
                   : "text-[var(--color-muted)] hover:bg-[var(--color-raised)] hover:text-[var(--color-ink)]"

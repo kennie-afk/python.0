@@ -25,7 +25,7 @@ html,
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
-  font-size: 15px;
+  font-size: 12px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
