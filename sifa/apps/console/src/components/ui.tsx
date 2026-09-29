@@ -254,7 +254,7 @@ export const selectClass =
   "mt-2 w-full cursor-pointer appearance-none rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] bg-[length:16px] bg-[right_0.875rem_center] bg-no-repeat py-2 pl-3 pr-9 text-[0.8125rem] outline-none transition-colors hover:border-[var(--color-faint)] focus:border-[var(--color-accent)] focus:ring-4 focus:ring-[var(--color-accent-soft)] bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.75%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')]";
 
 const buttonBase =
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[0.8125rem] font-medium transition-all active:translate-y-px disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[0.8125rem] font-medium transition-colors disabled:pointer-events-none disabled:opacity-50";
 
 export const buttonClass = `${buttonBase} bg-[var(--color-ink)] text-white hover:bg-[#242832]`;
 

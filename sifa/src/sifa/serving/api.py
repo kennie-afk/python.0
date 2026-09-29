@@ -112,7 +112,7 @@ def feed(user_id: str, platform: PlatformDep) -> dict[str, Any]:
 def benchmark(
     dimension: int = Query(48, ge=8, le=128),
     k: int = Query(10, ge=1, le=50),
-    corpus: int = Query(16000, ge=1000, le=40000),
+    corpus: int = Query(2000, ge=1000, le=40000),
 ) -> dict[str, Any]:
     from sifa.index.hnsw import HnswConfig, HnswIndex
 

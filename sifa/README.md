@@ -40,9 +40,22 @@ Every `/v1` route requires an `X-Api-Key` header matching one of the comma-separ
 values in `SIFA_API_KEYS`, and the service refuses to start if that variable is unset
 or holds a key shorter than 24 characters. `/healthz` stays open so an orchestrator can
 probe it. This is not decoration: `/v1/registry/promote` and `/v1/registry/rollback`
-change which model is serving live traffic, and `/v1/retrieval/benchmark` will build a
-40,000 vector index on demand. `SIFA_CORS_ORIGINS` is empty by default, because the
-console calls the API from the server, never from the browser.
+change which model is serving live traffic, and `/v1/retrieval/benchmark` builds a real
+HNSW index synchronously in the request handler. `SIFA_CORS_ORIGINS` is empty by
+default, because the console calls the API from the server, never from the browser.
+
+**Build time, measured, not previously claimed:** the benchmark table below reports
+query latency and recall, never how long *building* the index took — that number is
+real and severe. Measured on this repository's own `HnswIndex.add`, single-threaded:
+500 vectors 1.1s, 1,000 vectors 3.4s, 2,000 vectors 10.2s, 4,000 vectors 24.1s — worse
+than quadratic, because `ef_construction=200` makes every insert search the graph it
+is still building. The default `corpus` for `/v1/retrieval/benchmark` is therefore
+**2,000**, not 40,000: the old default took several minutes and pegged a CPU core for
+the whole call with no progress feedback, which is not a reasonable default for a GET
+endpoint. The 1,000-40,000 range is still selectable via `?corpus=`, but a caller
+asking for the top of that range should expect single-digit minutes, not seconds, and
+the endpoint has no timeout of its own — the caller's connection will simply outlast
+the server's willingness to keep computing if it gives up first.
 
 There is no database and no seed step. The service builds a simulated world on
 first request — users, items with topics and authors, timestamped interactions —
@@ -104,7 +117,7 @@ t-test would leak far past 5%.
 ruff check src tests && mypy src && pytest -q
 ```
 
-204 tests. `mypy` runs in strict mode.
+210 tests. `mypy` runs in strict mode.
 
 The tests are written to catch real failures rather than to raise coverage, and
 they have: the SPRT's mixture variance was wrong until the A/A test caught it,
