@@ -106,6 +106,22 @@ def test_rollback_prefers_the_canary_over_the_live_model() -> None:
     assert live is not None
     assert live.version == 1
 
+def test_rolling_back_a_canary_never_puts_two_models_live() -> None:
+    registry = ModelRegistry()
+    for _ in range(3):
+        registry.register("ranker", payload=None)
+    promote(registry, "ranker", 1)
+    promote(registry, "ranker", 2)  # v1 is now archived
+    registry.transition("ranker", 3, Stage.SHADOW)
+    registry.transition("ranker", 3, Stage.CANARY)
+
+    registry.rollback("ranker", "canary regressed")
+
+    live = [v for v in registry.versions("ranker") if v.stage is Stage.LIVE]
+    assert [v.version for v in live] == [2]
+    assert registry.get("ranker", 1).stage is Stage.ARCHIVED
+    assert registry.get("ranker", 3).stage is Stage.ROLLED_BACK
+
 def test_rollback_without_anything_serving_is_refused() -> None:
     registry = ModelRegistry()
     registry.register("ranker", payload=None)

@@ -20,6 +20,8 @@ from sifa.simulation.world import World, build_world
 
 _platform: Platform | None = None
 _platform_lock = threading.Lock()
+# One benchmark at a time: each builds an index synchronously on a worker thread and pegs a core.
+_benchmark_lock = threading.Lock()
 
 def _world_from_environment() -> World:
     return build_world(
@@ -40,7 +42,12 @@ PlatformDep = Annotated[Platform, Depends(get_platform)]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> Any:
-    get_platform().__next__()
+    platform = get_platform().__next__()
+    warmup = int(os.environ.get("SIFA_DEMO_WARMUP", "0") or 0)
+    if warmup > 0:
+        from sifa.serving.demo import warm_up
+
+        warm_up(platform, warmup)
     yield
 
 app = FastAPI(
@@ -116,6 +123,20 @@ def benchmark(
 ) -> dict[str, Any]:
     from sifa.index.hnsw import HnswConfig, HnswIndex
 
+    if not _benchmark_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A benchmark is already running. It builds an index from scratch; wait for it.",
+        )
+    try:
+        return _run_benchmark(HnswConfig, HnswIndex, dimension, k, corpus)
+    finally:
+        _benchmark_lock.release()
+
+def _run_benchmark(
+    hnsw_config: Any, hnsw_index: Any, dimension: int, k: int, corpus: int
+) -> dict[str, Any]:
+    HnswConfig, HnswIndex = hnsw_config, hnsw_index  # noqa: N806
     rng = np.random.default_rng(17)
     vectors = rng.normal(size=(corpus, dimension)).astype(np.float32)
     queries = rng.normal(size=(25, dimension)).astype(np.float32)

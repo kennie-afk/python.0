@@ -131,3 +131,19 @@ export interface SimulationResult {
   latency_p99_ms: number;
   experiment: string;
 }
+
+export interface BenchmarkPoint {
+  ef_search: number;
+  recall: number;
+  approximate_ms: number;
+  speedup: number;
+}
+
+export interface BenchmarkResult {
+  corpus: number;
+  dimension: number;
+  k: number;
+  build_seconds: number;
+  exhaustive_ms: number;
+  curve: BenchmarkPoint[];
+}

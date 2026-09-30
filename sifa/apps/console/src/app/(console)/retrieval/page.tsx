@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import { api, describeError } from "@/lib/api";
 import type { Retrieval, UserSummary } from "@/lib/types";
 import { UserPicker } from "@/components/user-picker";
-import { Badge, Card, Notice, PageHeader, Stat, Table } from "@/components/ui";
+import { Benchmark } from "@/components/benchmark";
+import { Card, Notice, PageHeader, Stat, Table } from "@/components/ui";
 
 export default async function RetrievalPage({
   searchParams
@@ -53,7 +54,12 @@ export default async function RetrievalPage({
             />
             <Stat label="Approximate" value={`${result.approximate_ms.toFixed(2)} ms`} hint="graph traversal" />
             <Stat label="Exhaustive" value={`${result.exact_ms.toFixed(2)} ms`} hint="every vector, no index" />
-            <Stat label="Speed-up" value={`${result.speedup.toFixed(1)}x`} hint="at this corpus size" tone="good" />
+            <Stat
+              label="Speed-up"
+              value={`${result.speedup.toFixed(1)}x`}
+              hint={result.speedup >= 1 ? "at this corpus size" : "below 1x: too few items for the graph to pay off"}
+              tone={result.speedup >= 1 ? "good" : "warn"}
+            />
           </div>
 
           <div className="mt-4">
@@ -91,9 +97,9 @@ export default async function RetrievalPage({
                     </td>
                     <td className="px-3 py-2.5">
                       {row.in_exact_set ? (
-                        <Badge value="stable" />
+                        <span className="text-sm text-[var(--color-good)]">Yes</span>
                       ) : (
-                        <Badge value="alert" />
+                        <span className="text-sm font-medium text-[var(--color-danger)]">Missed</span>
                       )}
                     </td>
                   </tr>
@@ -103,6 +109,9 @@ export default async function RetrievalPage({
           </div>
         </>
       ) : null}
+      <div className="mt-8">
+        <Benchmark />
+      </div>
     </>
   );
 }

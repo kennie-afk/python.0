@@ -13,7 +13,6 @@ export default async function RegistryPage() {
     error = describeError(caught);
   }
 
-  const newest = entries[entries.length - 1];
 
   return (
     <>
@@ -57,26 +56,32 @@ export default async function RegistryPage() {
             </Table>
           </Card>
 
-          {newest ? (
-            <Card title={`History of ${newest.label}`} description="Append only, in order.">
-              <ol className="relative space-y-4 border-l border-[var(--color-line)] pl-6">
-                {newest.history.map((event, index) => (
-                  <li key={`${event.at}-${index}`} className="relative">
-                    <span className="absolute -left-[1.6875rem] top-1.5 h-2.5 w-2.5 rounded-full bg-[var(--color-brand)] ring-4 ring-[var(--color-surface)]" />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge value={event.stage} />
-                      <span className="text-xs text-[var(--color-faint)]">
-                        {new Date(event.at).toLocaleString()}
-                      </span>
-                    </div>
-                    {event.reason ? (
-                      <p className="mt-1 text-sm text-[var(--color-muted)]">{event.reason}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            </Card>
-          ) : null}
+          <Card title="Release history" description="Append only, in order. Newest version first; open a version to read how it got where it is.">
+            <div className="space-y-2">
+              {[...entries].reverse().map((entry, position) => (
+                <details key={entry.label} open={position === 0}
+                  className="rounded-md border border-[var(--color-line)] px-3 py-2">
+                  <summary className="flex cursor-pointer items-center gap-3 text-sm font-medium">
+                    <span className="font-mono text-xs">{entry.label}</span>
+                    <Badge value={entry.stage} />
+                    <span className="text-xs font-normal text-[var(--color-faint)]">{entry.history.length} events</span>
+                  </summary>
+                  <ol className="relative mt-3 space-y-4 border-l border-[var(--color-line)] pl-6">
+                    {entry.history.map((event, index) => (
+                      <li key={`${event.at}-${index}`} className="relative">
+                        <span className="absolute -left-[1.6875rem] top-1.5 h-2.5 w-2.5 rounded-full bg-[var(--color-brand)] ring-4 ring-[var(--color-surface)]" />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge value={event.stage} />
+                          <span className="text-xs text-[var(--color-faint)]">{new Date(event.at).toLocaleString()}</span>
+                        </div>
+                        {event.reason ? <p className="mt-1 text-sm text-[var(--color-muted)]">{event.reason}</p> : null}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              ))}
+            </div>
+          </Card>
         </div>
       ) : null}
     </>

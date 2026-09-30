@@ -12,7 +12,7 @@ from sifa.evaluation.metrics import ndcg, recall_at_k
 from sifa.experiments.assignment import Experiment, Variant
 from sifa.experiments.sequential import MixtureSprt, SequentialResult
 from sifa.index.hnsw import HnswConfig
-from sifa.monitoring.drift import DriftReport, detect_drift
+from sifa.monitoring.drift import LOW_CARDINALITY, DriftReport, detect_drift
 from sifa.monitoring.guard import GuardVerdict, RolloutGuard, ServingWindow
 from sifa.ranking.ranker import LearningToRank, RankerConfig, TrainingReport
 from sifa.registry.models import ModelRegistry, Stage
@@ -198,9 +198,12 @@ class Platform:
 
         for name, reference in self.reference_features.items():
             sample = np.asarray(reference, dtype=np.float64)
-            live = sample + live_shift * (sample.std() or 1.0) + rng.normal(
-                0, 1e-6, size=len(sample)
-            )
+            live = sample + live_shift * (sample.std() or 1.0)
+            # Jitter breaks ties in continuous features. On a discrete feature (a 0/1 flag) it
+            # splits every tie the wrong way and makes the KS test report a large, meaningless
+            # difference between two identical samples.
+            if len(np.unique(np.round(sample, 9))) > LOW_CARDINALITY:
+                live = live + rng.normal(0, 1e-6, size=len(sample))
             reports.append(detect_drift(name, sample.tolist(), live.tolist()))
 
         reports.sort(key=lambda report: report.psi, reverse=True)

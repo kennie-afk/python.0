@@ -40,8 +40,9 @@ export function RegistryActions() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {message ? <Notice tone="good">{message}</Notice> : null}
       <p className="text-xs leading-relaxed text-[var(--color-faint)]">
-        A promotion enters shadow, then canary at ten percent of traffic. A rollback demotes
-        whatever is serving and restores the previous archived version in the same step.
+        A promotion enters shadow, then canary at ten percent of traffic. A rollback withdraws
+        the canary if there is one, leaving the live model untouched; with no canary it withdraws the live
+        model and restores the previous archived version in the same step.
       </p>
     </div>
   );

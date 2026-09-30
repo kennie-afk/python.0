@@ -61,6 +61,44 @@ There is no database and no seed step. The service builds a simulated world on
 first request — users, items with topics and authors, timestamped interactions —
 then trains the tower and the ranker against it. Cold start is about 9 seconds.
 
+## Demo in five minutes
+
+```bash
+cp .env.example .env
+# in .env: set SIFA_API_KEYS to 24+ random characters and SIFA_DEMO_WARMUP=2500
+docker compose up -d --build        # api on 8000, console on 3200; the API needs about a minute
+```
+
+`SIFA_DEMO_WARMUP=2500` makes the API serve 2,500 real feeds through the real pipeline before it reports
+healthy (about 30 seconds) and record a release history, so the Experiment, Drift and Registry screens
+open with something on them instead of at zero. The release history (a promoted v2 and a canary that was
+rolled back) is written through the real registry transitions and every reason is tagged
+`(demo warm-up)`. Leave it at 0 for a cold start. Host ports are `SIFA_API_PORT` and `SIFA_CONSOLE_PORT`.
+The console has no login: it calls the API server-side with the key.
+
+What to show, in order:
+
+1. **Overview**: what is live (`ranker:v2`), ranker AUC, index size, the rollout guard, and the experiment's
+   verdict after 2,500 served feeds.
+2. **Feed**: pick a person. Every row shows why it is there: retrieved, re-ranked, diversified, or an
+   exploration slot from the bandit.
+3. **Search**: graph search against exhaustive search for the same query. At 574 items exhaustive search
+   wins (the screen says so); open **Scale test** and run 2,000 vectors. The button disables, counts
+   seconds and shows an estimate, because building the index is the expensive part (about 10 s at 2,000,
+   about 25 s at 4,000). The API runs one benchmark at a time and answers 409 to a second.
+4. **Ranker**: what the model leans on and its calibration.
+5. **Registry**: promote a candidate (shadow, then canary at ten percent), then roll it back. Rolling back
+   a canary leaves the live model alone; only with no canary does a rollback withdraw the live model and
+   restore the previous one. Open a version to read its history.
+6. **Experiment**: a sequential test you can look at whenever you like. After 2,500 feeds it reads
+   "continue": both arms convert the same, which is the honest answer here.
+7. **Drift**: with no injected shift every feature reads stable; choose 1σ or 2σ and watch the PSI and
+   KS columns catch it.
+8. **Load**: serve 500 or 1,000 feeds and read throughput and p50/p95/p99.
+
+`node tools/ui_flow_check.mjs http://localhost:3200` drives these screens in headless Chrome and asserts
+the results; `node tools/shot.mjs` takes screenshots.
+
 ## Measured, not claimed
 
 Every number below comes from the code in this repository on a 4-core laptop.
@@ -117,7 +155,7 @@ t-test would leak far past 5%.
 ruff check src tests && mypy src && pytest -q
 ```
 
-210 tests. `mypy` runs in strict mode.
+217 tests (`pytest --collect-only`). `mypy` runs in strict mode.
 
 The tests are written to catch real failures rather than to raise coverage, and
 they have: the SPRT's mixture variance was wrong until the A/A test caught it,

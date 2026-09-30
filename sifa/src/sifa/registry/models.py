@@ -128,9 +128,17 @@ class ModelRegistry:
             if current is None:
                 raise RegistryError(f"{name!r} has nothing serving to roll back")
 
+            # Withdrawing a canary leaves the live model exactly where it was. Only withdrawing the
+            # live model itself restores an older one; doing it for a canary would put two models
+            # live at once whenever an older version was archived.
+            withdrew_live = current.stage is Stage.LIVE
+
             current.stage = Stage.ROLLED_BACK
             current.traffic = 0.0
             current.history.append((now(), Stage.ROLLED_BACK, reason))
+
+            if not withdrew_live:
+                return current
 
             previous = [
                 candidate

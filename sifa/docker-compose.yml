@@ -9,6 +9,8 @@ services:
       SIFA_ITEMS: "600"
       SIFA_API_KEYS: ${SIFA_API_KEYS:?SIFA_API_KEYS must be set to one or more keys of at least 24 characters}
       SIFA_CORS_ORIGINS: ${SIFA_CORS_ORIGINS:-}
+      # Demo only: serve this many feeds at start-up and record a release history (about 11 ms each).
+      SIFA_DEMO_WARMUP: ${SIFA_DEMO_WARMUP:-0}
 
   console:
     build:
