@@ -124,7 +124,7 @@ uv run ruff check .
 uv run mypy
 ```
 
-314 tests. Passes `mypy --strict` and `ruff` with zero findings.
+390 tests. Passes `mypy --strict` and `ruff` with zero findings.
 
 ```bash
 docker compose up
@@ -134,10 +134,11 @@ docker compose up
 uv run uvicorn aegis.api.app:app --reload
 ```
 
-Thirteen endpoints covering workflow runs, approvals, external results, anonymisation, adverse
-impact testing, attrition training and scoring, and ledger inspection. Every request carries an
-`X-Tenant-Id`; a request without one is refused rather than defaulted, and one tenant cannot
-read another's runs, models or ledger.
+Twenty-six endpoints covering workflow runs and their filters, approvals, external results, anonymisation,
+screening history, adverse impact testing and its stored findings, attrition training, scoring and the
+retention roster, and ledger inspection, search and export. Every request is authenticated by a
+token or API key that carries its tenant (a bare tenant header is refused, see below), and one
+tenant cannot read another's runs, screenings, findings, models or ledger.
 
 ## Attrition
 
@@ -219,6 +220,63 @@ Schema is versioned rather than created implicitly, and the initial revision app
 reverses cleanly.
 
 
+
+## Demo in five minutes
+
+Nothing here needs an API key, a model or a mail server: with those left empty Aegis scores with
+its deterministic model and sends mail to a mock transport.
+
+```
+cp .env.example .env          # then set POSTGRES_PASSWORD, AEGIS_JWT_SECRET, AEGIS_ANONYMISATION_SALT
+make demo
+```
+
+`make demo` builds and starts the stack, creates a tenant called *Kijani Logistics (demo)* under
+the **conservative** governance posture, and fills it by calling the platform's own API, so every
+step goes through the governance gate and into the hash-chained ledger. It prints a tenant API key
+**once**. Open the console at `http://localhost:${AEGIS_CONSOLE_PORT:-3000}`, paste the key, and sign in.
+
+Ports come from `.env` (`AEGIS_PORT`, `AEGIS_CONSOLE_PORT`, `POSTGRES_PORT`), so the demo can sit
+beside other systems that want 3000, 8000 or 5432. `make reseed` wipes the demo tenant and rebuilds
+it; running `make demo` twice never seeds twice. The seeder refuses to run unless
+`AEGIS_ALLOW_DEMO_SEED=true`, which only `make demo` sets, so it cannot fill a real tenant by mistake.
+
+What it creates, all invented and reproducible from a fixed seed:
+
+| Screen | What is there |
+|---|---|
+| Overview | 24 runs, the ones waiting on a person, the ones that failed, an intact audit chain |
+| Screening | 400 verdicts: 200 applicants, then the same 200 again without one signal |
+| Compliance | four stored analyses, one of which is a genuine adverse impact finding |
+| Runs | hiring, onboarding, retention and offboarding at every stage |
+| Retention | a model trained on 420 past employees and 64 current staff scored, riskiest first |
+| Audit | every step, human approvals named, the compliance verdicts included, exportable as CSV |
+
+### A talk track
+
+1. **Overview.** "These are the things the agents could not decide for themselves." Open *Waiting
+   for a decision*: shortlisting stops for a person even though scoring ran on its own. That is
+   policy, not a bug.
+2. **Approve one.** Open a run held at *shortlist* and approve it. Outreach and interview booking
+   then run themselves, and the run stops again at *offer*, marked irreversible. No configuration
+   lets an offer go out without a person.
+3. **Recover a failure.** Filter Runs by *Failed*. One outreach bounced on a mistyped address; fix
+   the address in the retry box and the run carries on. Nothing was lost, and the retry is in the
+   audit trail.
+4. **Compliance.** The age-band analysis is flagged: applicants 45 and over advanced at 0.39 of the
+   best group's rate, far under the four-fifths line. Nobody's age ever reached the model; a
+   plausible-looking signal, familiarity with recent tooling, tracked age. The next analysis is the
+   same pool re-screened without that signal: it passes. The flag, and the evidence the fix worked,
+   are both on record.
+5. **Audit.** Open the audit trail and note the *Flagged* entry that the compliance finding wrote
+   into the chain. *Verify again* recomputes every hash. *Export CSV* includes the hashes, so someone
+   who does not trust this service can re-verify the trail offline.
+6. **Retention.** The model says what drives each person's risk, and *Start conversation* opens a
+   governed run for the highest-risk ones.
+
+A few honest limits. The scorer is deterministic and simple on purpose, so a demo gives the same
+answer every time; the screening *values* are not a claim about a real model. Interview slots are
+kept in memory and are lost if the API restarts. The people in the demo are synthetic.
 
 ## Running it
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ApiError, api, describeError } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { ApprovalActions, RetryAction } from "@/components/step-actions";
+import { ApprovalActions, ExternalResultAction, RetryAction } from "@/components/step-actions";
 import { Badge, Card, KeyValue, Notice, PageHeader, secondaryButtonClass } from "@/components/ui";
 import type { RunView, WorkflowCatalogue } from "@/lib/types";
 
@@ -118,6 +118,10 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
                 {step.status === "AWAITING_APPROVAL" ? (
                   <ApprovalActions runId={run.run_id} step={step} approver={session.subject} />
+                ) : null}
+
+                {step.status === "AWAITING_EXTERNAL" ? (
+                  <ExternalResultAction runId={run.run_id} step={step} reporter={session.subject} />
                 ) : null}
 
                 {step.retryable ? (

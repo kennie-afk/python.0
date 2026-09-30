@@ -96,6 +96,12 @@ class GroupOutcomeIn(BaseModel):
 class AdverseImpactRequest(BaseModel):
     outcomes: list[GroupOutcomeIn] = Field(min_length=2)
     minimum_group_size: int = Field(default=30, ge=1)
+    label: str = Field(
+        default="Ad-hoc check",
+        min_length=1,
+        max_length=200,
+        description="what was analysed, e.g. 'Backend engineer shortlist by age band'",
+    )
 
 class GroupImpactView(BaseModel):
     group: str
@@ -106,6 +112,11 @@ class GroupImpactView(BaseModel):
     adversely_impacted: bool
 
 class AdverseImpactResponse(BaseModel):
+    report_id: int | None = None
+    label: str | None = None
+    ledger_sequence: int | None = None
+    recorded_at: str | None = None
+    minimum_group_size: int | None = None
     verdict: str
     reference_group: str
     reference_rate: float
@@ -189,3 +200,36 @@ class ProblemDetail(BaseModel):
     detail: str
     status: int
     code: str
+
+
+class OverviewView(BaseModel):
+    runs: int
+    awaiting_approval: int
+    awaiting_external: int
+    failed: int
+    ledger_entries: int
+    human_decisions: int
+    screenings: dict[str, int]
+    impact_reports: dict[str, int]
+    retention_bands: dict[str, int]
+    model_trained: bool
+
+class StoredScreeningView(BaseModel):
+    id: int
+    subject_key: str
+    requirement: str
+    score: float
+    recommendation: str
+    rationale: str
+    signals_considered: list[str]
+    model: str
+    prompt_fingerprint: str
+    screened_at: str
+
+class StoredScoreView(BaseModel):
+    subject_key: str
+    probability: float
+    band: str
+    needs_intervention: bool
+    drivers: list[DriverView]
+    scored_at: str

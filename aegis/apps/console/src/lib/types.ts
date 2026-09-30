@@ -87,6 +87,11 @@ export interface GroupImpactView {
 }
 
 export interface AdverseImpactResponse {
+  report_id?: number | null;
+  label?: string | null;
+  ledger_sequence?: number | null;
+  recorded_at?: string | null;
+  minimum_group_size?: number | null;
   verdict: string;
   reference_group: string;
   reference_rate: number;
@@ -138,4 +143,39 @@ export interface Problem {
   detail: string;
   status: number;
   code: string;
+}
+
+export interface OverviewView {
+  runs: number;
+  awaiting_approval: number;
+  awaiting_external: number;
+  failed: number;
+  ledger_entries: number;
+  human_decisions: number;
+  screenings: Record<string, number>;
+  impact_reports: Record<string, number>;
+  retention_bands: Record<string, number>;
+  model_trained: boolean;
+}
+
+export interface StoredScreeningView {
+  id: number;
+  subject_key: string;
+  requirement: string;
+  score: number;
+  recommendation: string;
+  rationale: string;
+  signals_considered: string[];
+  model: string;
+  prompt_fingerprint: string;
+  screened_at: string;
+}
+
+export interface StoredScoreView {
+  subject_key: string;
+  probability: number;
+  band: string;
+  needs_intervention: boolean;
+  drivers: DriverView[];
+  scored_at: string;
 }

@@ -61,7 +61,10 @@ class RunRow(Base):
 
 class StepRow(Base):
     __tablename__ = "workflow_steps"
-    __table_args__ = (UniqueConstraint("run_id", "step_key", name="uq_run_step"),)
+    __table_args__ = (
+        UniqueConstraint("run_id", "step_key", name="uq_run_step"),
+        Index("ix_workflow_steps_status", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(
@@ -84,6 +87,7 @@ class LedgerRow(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "sequence", name="uq_ledger_tenant_sequence"),
         Index("ix_ledger_subject", "tenant_id", "subject_id"),
+        Index("ix_ledger_tenant_outcome", "tenant_id", "outcome"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -124,3 +128,61 @@ class ApiKeyRow(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class ScreeningRow(Base):
+    """One screening verdict. Holds only the pseudonymous subject key, never the record."""
+
+    __tablename__ = "screenings"
+    __table_args__ = (
+        Index("ix_screenings_tenant_created", "tenant_id", "created_at"),
+        Index("ix_screenings_subject", "tenant_id", "subject_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    requirement: Mapped[str] = mapped_column(String(500), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    recommendation: Mapped[str] = mapped_column(String(20), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    signals: Mapped[list[str]] = mapped_column(JSON, default=list)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class ImpactReportRow(Base):
+    """A stored adverse impact analysis, so findings outlive the request that produced them."""
+
+    __tablename__ = "impact_reports"
+    __table_args__ = (Index("ix_impact_reports_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(40), nullable=False)
+    reference_group: Mapped[str] = mapped_column(String(100), nullable=False)
+    reference_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    p_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    minimum_group_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    groups: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    ledger_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class RiskScoreRow(Base):
+    """The latest retention score for each employee, so the retention view has a roster."""
+
+    __tablename__ = "attrition_scores"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "subject_key", name="uq_attrition_score_subject"),
+        Index("ix_attrition_scores_band", "tenant_id", "band", "probability"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    probability: Mapped[float] = mapped_column(Float, nullable=False)
+    band: Mapped[str] = mapped_column(String(20), nullable=False)
+    needs_intervention: Mapped[bool] = mapped_column(Boolean, default=False)
+    drivers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

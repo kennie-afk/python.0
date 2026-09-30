@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import os
+import uuid
 from collections.abc import Iterator, Sequence
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +37,7 @@ from aegis.api.schemas import (
     IntegrityView,
     LedgerEntryView,
     ModelStatusView,
+    OverviewView,
     RejectionRequest,
     RetryRequest,
     RunView,
@@ -42,6 +46,8 @@ from aegis.api.schemas import (
     ScreenRequest,
     StartRunRequest,
     StepView,
+    StoredScoreView,
+    StoredScreeningView,
     TokenRequest,
     TokenResponse,
     TrainRequest,
@@ -70,12 +76,16 @@ from aegis.integrations.email import (
     SmtpEmailTransport,
 )
 from aegis.ledger.record import DecisionLedger, LedgerEntry, make_entry
+from aegis.persistence.models import ImpactReportRow
 from aegis.persistence.repositories import (
     ApiKeyRepository,
+    ImpactReportRepository,
     LedgerRepository,
     ModelRepository,
     PolicyRepository,
+    RiskScoreRepository,
     RunRepository,
+    ScreeningRepository,
 )
 from aegis.persistence.session import Database
 from aegis.reasoning.deterministic import DeterministicModel
@@ -432,14 +442,30 @@ _RUNS_PAGE_MAX = 500
 
 @app.get("/v1/runs")
 def list_runs(
-    caller: PrincipalDep, platform: PlatformDep, limit: int = _RUNS_PAGE_DEFAULT, offset: int = 0
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    response: Response,
+    limit: int = _RUNS_PAGE_DEFAULT,
+    offset: int = 0,
+    workflow: str | None = None,
+    q: str | None = Query(default=None, max_length=100, description="subject contains"),
+    needs: str | None = Query(
+        default=None, pattern="^(approval|failed|external)$", description="runs blocked on this"
+    ),
 ) -> list[RunView]:
+    """Newest first. Filters run in the database; `X-Total-Count` is the number that matched."""
     bounded_limit = max(1, min(limit, _RUNS_PAGE_MAX))
     with platform.database.session() as session:
-        runs = RunRepository(session).for_tenant(
-            caller.tenant_id, limit=bounded_limit, offset=max(0, offset)
+        runs, total = RunRepository(session).search(
+            caller.tenant_id,
+            workflow=workflow,
+            query=q,
+            needs=needs,
+            limit=bounded_limit,
+            offset=max(0, offset),
         )
         runtime = platform.runtime(session, caller.tenant_id)
+        response.headers["X-Total-Count"] = str(total)
         return [_view(run, runtime) for run in runs]
 
 @app.get("/v1/runs/{run_id}")
@@ -561,6 +587,20 @@ def screen_candidate(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from error
 
+    # Only the pseudonymous key and the verdict are kept; the record itself never is.
+    with platform.database.session() as session:
+        ScreeningRepository(session).add(
+            caller.tenant_id,
+            subject_key=result.subject_key,
+            requirement=request.requirement,
+            score=round(result.score, 4),
+            recommendation=result.recommendation,
+            rationale=result.rationale,
+            signals=result.signals_considered,
+            model=result.model,
+            prompt_fingerprint=result.prompt_fingerprint,
+        )
+
     return ScreeningView(
         subject_key=result.subject_key,
         score=round(result.score, 4),
@@ -571,8 +611,62 @@ def screen_candidate(
         prompt_fingerprint=result.prompt_fingerprint,
     )
 
+@app.get("/v1/screenings")
+def list_screenings(
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    response: Response,
+    recommendation: str | None = Query(default=None, pattern="^(ADVANCE|REVIEW|HOLD)$"),
+    q: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[StoredScreeningView]:
+    with platform.database.session() as session:
+        rows, total = ScreeningRepository(session).search(
+            caller.tenant_id, recommendation=recommendation, query=q, limit=limit, offset=offset
+        )
+        response.headers["X-Total-Count"] = str(total)
+        return [
+            StoredScreeningView(
+                id=row.id,
+                subject_key=row.subject_key,
+                requirement=row.requirement,
+                score=row.score,
+                recommendation=row.recommendation,
+                rationale=row.rationale,
+                signals_considered=list(row.signals),
+                model=row.model,
+                prompt_fingerprint=row.prompt_fingerprint,
+                screened_at=row.created_at.isoformat(),
+            )
+            for row in rows
+        ]
+
+_IMPACT_OUTCOME = {
+    "ADVERSE_IMPACT": "FLAGGED",
+    "NO_ADVERSE_IMPACT": "PASSED",
+    "INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+}
+
+def _impact_view(row: ImpactReportRow) -> AdverseImpactResponse:
+    return AdverseImpactResponse(
+        report_id=row.id,
+        label=row.label,
+        ledger_sequence=row.ledger_sequence,
+        recorded_at=row.created_at.isoformat(),
+        minimum_group_size=row.minimum_group_size,
+        verdict=row.verdict,
+        reference_group=row.reference_group,
+        reference_rate=row.reference_rate,
+        groups=[GroupImpactView(**group) for group in row.groups],
+        p_value=row.p_value,
+        summary=row.summary,
+    )
+
 @app.post("/v1/bias/adverse-impact")
-def adverse_impact(request: AdverseImpactRequest, caller: PrincipalDep) -> AdverseImpactResponse:
+def adverse_impact(
+    request: AdverseImpactRequest, caller: PrincipalDep, platform: PlatformDep
+) -> AdverseImpactResponse:
     report = four_fifths_test(
         [
             GroupOutcome(group=item.group, selected=item.selected, total=item.total)
@@ -581,24 +675,78 @@ def adverse_impact(request: AdverseImpactRequest, caller: PrincipalDep) -> Adver
         minimum_group_size=request.minimum_group_size,
     )
 
-    return AdverseImpactResponse(
-        verdict=str(report.verdict),
-        reference_group=report.reference_group,
-        reference_rate=report.reference_rate,
-        groups=[
-            GroupImpactView(
-                group=group.group,
-                selection_rate=group.selection_rate,
-                impact_ratio=group.impact_ratio,
-                total=group.total,
-                selected=group.selected,
-                adversely_impacted=group.adversely_impacted,
+    groups = [
+        GroupImpactView(
+            group=group.group,
+            selection_rate=group.selection_rate,
+            impact_ratio=group.impact_ratio,
+            total=group.total,
+            selected=group.selected,
+            adversely_impacted=group.adversely_impacted,
+        )
+        for group in report.groups
+    ]
+
+    # A finding is evidence, so it is stored and its verdict is written into the hash chain:
+    # a flagged analysis cannot later be quietly deleted without breaking the audit trail.
+    with platform.database.session() as session:
+        verdict = str(report.verdict)
+        ledger = PersistentLedger(session, caller.tenant_id)
+        entry = ledger.append(
+            tenant_id=caller.tenant_id,
+            workflow="compliance",
+            run_id=str(uuid.uuid4()),
+            step="adverse_impact_test",
+            action_type="ADVERSE_IMPACT_TEST",
+            subject_id=request.label,
+            agent="aegis-compliance",
+            outcome=_IMPACT_OUTCOME.get(verdict, verdict),
+            reasons=(report.summary(),),
+            approver=None,
+        )
+        row = ImpactReportRepository(session).add(
+            ImpactReportRow(
+                tenant_id=caller.tenant_id,
+                label=request.label,
+                verdict=verdict,
+                reference_group=report.reference_group,
+                reference_rate=report.reference_rate,
+                p_value=report.p_value,
+                minimum_group_size=request.minimum_group_size,
+                groups=[group.model_dump() for group in groups],
+                summary=report.summary(),
+                ledger_sequence=entry.sequence,
             )
-            for group in report.groups
-        ],
-        p_value=report.p_value,
-        summary=report.summary(),
-    )
+        )
+        return _impact_view(row)
+
+@app.get("/v1/bias/reports")
+def list_impact_reports(
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    response: Response,
+    verdict: str | None = Query(
+        default=None, pattern="^(ADVERSE_IMPACT|NO_ADVERSE_IMPACT|INSUFFICIENT_DATA)$"
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[AdverseImpactResponse]:
+    with platform.database.session() as session:
+        rows, total = ImpactReportRepository(session).search(
+            caller.tenant_id, verdict=verdict, limit=limit, offset=offset
+        )
+        response.headers["X-Total-Count"] = str(total)
+        return [_impact_view(row) for row in rows]
+
+@app.get("/v1/bias/reports/{report_id}")
+def get_impact_report(
+    report_id: int, caller: PrincipalDep, platform: PlatformDep
+) -> AdverseImpactResponse:
+    with platform.database.session() as session:
+        row = ImpactReportRepository(session).get(caller.tenant_id, report_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="report not found")
+        return _impact_view(row)
 
 def _snapshot(employee: EmployeeIn) -> EmployeeSnapshot:
     return EmployeeSnapshot(
@@ -671,7 +819,7 @@ def score_employees(
         )
 
     scores = model.score_all([_snapshot(item) for item in request.employees])
-    return [
+    views = [
         AttritionScoreView(
             subject_key=score.subject_key,
             probability=round(score.probability, 4),
@@ -688,6 +836,46 @@ def score_employees(
         )
         for score in scores
     ]
+
+    with platform.database.session() as session:
+        risks = RiskScoreRepository(session)
+        for view in views:
+            risks.upsert(
+                caller.tenant_id,
+                view.subject_key,
+                view.probability,
+                view.band,
+                view.needs_intervention,
+                [driver.model_dump() for driver in view.drivers],
+            )
+    return views
+
+@app.get("/v1/attrition/scores")
+def list_scores(
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    response: Response,
+    band: str | None = Query(default=None, pattern="^(LOW|MEDIUM|HIGH)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[StoredScoreView]:
+    """The latest score for each employee, highest risk first."""
+    with platform.database.session() as session:
+        rows, total = RiskScoreRepository(session).search(
+            caller.tenant_id, band=band, limit=limit, offset=offset
+        )
+        response.headers["X-Total-Count"] = str(total)
+        return [
+            StoredScoreView(
+                subject_key=row.subject_key,
+                probability=row.probability,
+                band=row.band,
+                needs_intervention=row.needs_intervention,
+                drivers=[DriverView(**driver) for driver in row.drivers],
+                scored_at=row.scored_at.isoformat(),
+            )
+            for row in rows
+        ]
 
 _LEDGER_PAGE_DEFAULT = 200
 _LEDGER_PAGE_MAX = 1000
@@ -731,3 +919,120 @@ def verify_ledger(caller: PrincipalDep, platform: PlatformDep) -> IntegrityView:
         broken_at=report.broken_at,
         reason=report.reason,
     )
+
+
+def _ledger_view(entry: LedgerEntry) -> LedgerEntryView:
+    return LedgerEntryView(
+        sequence=entry.sequence,
+        workflow=entry.workflow,
+        step=entry.step,
+        action_type=entry.action_type,
+        subject_id=entry.subject_id,
+        outcome=entry.outcome,
+        reasons=list(entry.reasons),
+        approver=entry.approver,
+        recorded_at=entry.recorded_at.isoformat(),
+    )
+
+@app.get("/v1/ledger/search")
+def search_ledger(
+    caller: PrincipalDep,
+    platform: PlatformDep,
+    response: Response,
+    outcome: str | None = Query(default=None, max_length=40),
+    actor: str | None = Query(default=None, pattern="^(people|agents)$"),
+    workflow: str | None = Query(default=None, max_length=100),
+    q: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[LedgerEntryView]:
+    """Newest first, filtered and paged in the database; `X-Total-Count` is the match count."""
+    with platform.database.session() as session:
+        entries, total = LedgerRepository(session).search(
+            caller.tenant_id,
+            outcome=outcome,
+            actor=actor,
+            query=q,
+            workflow=workflow,
+            limit=limit,
+            offset=offset,
+        )
+    response.headers["X-Total-Count"] = str(total)
+    return [_ledger_view(entry) for entry in entries]
+
+_EXPORT_COLUMNS = (
+    "sequence",
+    "recorded_at",
+    "workflow",
+    "step",
+    "action_type",
+    "subject_id",
+    "agent",
+    "outcome",
+    "approver",
+    "reasons",
+    "previous_hash",
+    "entry_hash",
+)
+
+def _spreadsheet_safe(value: str) -> str:
+    # A cell starting with = + - @ is executed as a formula by spreadsheet software.
+    return "'" + value if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+
+@app.get("/v1/ledger/export")
+def export_ledger(caller: PrincipalDep, platform: PlatformDep) -> StreamingResponse:
+    """The whole audit trail as CSV, including each entry's hashes so it can be re-verified
+    offline by someone who does not trust this service."""
+
+    def rows() -> Iterator[str]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(_EXPORT_COLUMNS)
+        yield buffer.getvalue()
+        with platform.database.session() as session:
+            for entry in LedgerRepository(session).stream(caller.tenant_id):
+                buffer.seek(0)
+                buffer.truncate()
+                writer.writerow(
+                    [
+                        entry.sequence,
+                        entry.recorded_at.isoformat(),
+                        entry.workflow,
+                        entry.step,
+                        entry.action_type,
+                        _spreadsheet_safe(entry.subject_id),
+                        entry.agent,
+                        entry.outcome,
+                        _spreadsheet_safe(entry.approver or ""),
+                        _spreadsheet_safe(" | ".join(entry.reasons)),
+                        entry.previous_hash,
+                        entry.entry_hash,
+                    ]
+                )
+                yield buffer.getvalue()
+
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="aegis-audit-trail.csv"'},
+    )
+
+@app.get("/v1/overview")
+def overview(caller: PrincipalDep, platform: PlatformDep) -> OverviewView:
+    """Counts for the console's front page, computed in the database rather than by fetching
+    every run and ledger entry and counting them in the browser."""
+    with platform.database.session() as session:
+        runs = RunRepository(session).counts(caller.tenant_id)
+        ledger = LedgerRepository(session).counts(caller.tenant_id)
+        return OverviewView(
+            runs=runs["total"],
+            awaiting_approval=runs["awaiting_approval"],
+            awaiting_external=runs["awaiting_external"],
+            failed=runs["failed"],
+            ledger_entries=ledger["total"],
+            human_decisions=ledger["approvals"],
+            screenings=ScreeningRepository(session).by_recommendation(caller.tenant_id),
+            impact_reports=ImpactReportRepository(session).by_verdict(caller.tenant_id),
+            retention_bands=RiskScoreRepository(session).by_band(caller.tenant_id),
+            model_trained=ModelRepository(session).describe(caller.tenant_id) is not None,
+        )

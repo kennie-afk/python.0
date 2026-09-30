@@ -1,6 +1,6 @@
 import type { Problem } from "@/lib/types";
 
-const API = process.env.AEGIS_API_URL ?? "http://localhost:18100";
+const API = process.env.AEGIS_API_URL ?? "http://localhost:8000";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -55,7 +55,35 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await response.json()) as T;
 }
 
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+/** A list endpoint that reports how many rows matched in `X-Total-Count`. */
+export async function requestPage<T>(path: string, token?: string | null): Promise<Page<T>> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API}${path}`, { headers, cache: "no-store" });
+  if (!response.ok) {
+    let problem: Problem | null = null;
+    try {
+      problem = (await response.json()) as Problem;
+    } catch {
+      problem = null;
+    }
+    throw new ApiError(response.status, problem, problem?.detail ?? response.statusText);
+  }
+  const items = (await response.json()) as T[];
+  return { items, total: Number(response.headers.get("x-total-count") ?? items.length) };
+}
+
+export const apiUrl = API;
+
 export const api = {
+  page: <T>(path: string, token?: string | null) => requestPage<T>(path, token),
   get: <T>(path: string, token?: string | null) => request<T>(path, { token }),
   post: <T>(path: string, body: unknown, token?: string | null) =>
     request<T>(path, { method: "POST", body, token })

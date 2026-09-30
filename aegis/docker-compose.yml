@@ -32,6 +32,8 @@ services:
       AEGIS_SMTP_PORT: ${AEGIS_SMTP_PORT:-587}
       AEGIS_SMTP_USERNAME: ${AEGIS_SMTP_USERNAME:-}
       AEGIS_SMTP_PASSWORD: ${AEGIS_SMTP_PASSWORD:-}
+      # Only `make demo` sets this; without it the demo seeder refuses to run.
+      AEGIS_ALLOW_DEMO_SEED: ${AEGIS_ALLOW_DEMO_SEED:-false}
     ports:
       - "${AEGIS_PORT:-8000}:8000"
     depends_on:
@@ -43,6 +45,8 @@ services:
     restart: unless-stopped
     environment:
       AEGIS_API_URL: http://api:8000
+      # Set to false only to sign in over plain http from a host other than localhost.
+      AEGIS_COOKIE_SECURE: ${AEGIS_COOKIE_SECURE:-true}
     ports:
       - "${AEGIS_CONSOLE_PORT:-3000}:3000"
     depends_on:

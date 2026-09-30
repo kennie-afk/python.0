@@ -158,7 +158,21 @@ const TONE: Record<string, string> = {
   CRITICAL: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
   SUSPENDED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
   PLANNED: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
-  LISTED: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+  LISTED: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+  ADVANCE: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  REVIEW: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  HOLD: "bg-[var(--color-raised)] text-[var(--color-muted)]",
+  PASSED: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  NO_ADVERSE_IMPACT: "bg-[var(--color-good-soft)] text-[var(--color-good)]",
+  FLAGGED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  ADVERSE_IMPACT: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  INSUFFICIENT_DATA: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  AWAITING_APPROVAL: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  AWAITING_EXTERNAL: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  BLOCKED: "bg-[var(--color-warn-soft)] text-[var(--color-warn)]",
+  FAILED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  REJECTED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]",
+  DENIED: "bg-[var(--color-danger-soft)] text-[var(--color-danger)]"
 };
 
 function sentence(value: string): string {

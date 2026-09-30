@@ -66,6 +66,7 @@ export function ImpactForm() {
           <div className="grid gap-4 sm:grid-cols-3">
             <Select
               label="Compare by"
+              name="comparison"
               placeholder="Choose a characteristic"
               options={Object.entries(COMPARISONS).map(([value, entry]) => ({
                 value,
@@ -145,6 +146,11 @@ export function ImpactForm() {
               </span>
             </div>
             <p className="text-sm">{state.result.summary}</p>
+            {state.result.ledger_sequence !== null && state.result.ledger_sequence !== undefined ? (
+              <p className="text-xs text-[var(--color-faint)]">
+                Saved, and recorded in the audit trail as entry {state.result.ledger_sequence}.
+              </p>
+            ) : null}
             <Table head={["Group", "Selected", "Rate", "Ratio", ""]}>
               {state.result.groups.map((group) => (
                 <tr key={group.group} className={rowClass}>

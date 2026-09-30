@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { DateTimeField, EmailListField } from "@/components/controls";
 import { SubmitButton } from "@/components/submit-button";
 import { Notice, inputClass, secondaryButtonClass } from "@/components/ui";
-import { approveStep, rejectStep, retryStep } from "@/lib/actions";
+import { approveStep, rejectStep, resolveExternalStep, retryStep } from "@/lib/actions";
 import { idleForm } from "@/lib/form-state";
 import type { StepView } from "@/lib/types";
 
@@ -66,6 +66,43 @@ export function ApprovalActions({
       )}
 
       {approveState.error ? <Notice tone="danger">{approveState.error}</Notice> : null}
+    </div>
+  );
+}
+
+export function ExternalResultAction({
+  runId,
+  step,
+  reporter
+}: {
+  runId: string;
+  step: StepView;
+  reporter: string;
+}) {
+  const [state, record] = useActionState(resolveExternalStep, idleForm);
+
+  return (
+    <div className="mt-3 space-y-3">
+      <p className="text-xs text-[var(--color-muted)]">
+        The agent has placed the order and is waiting for the outside provider. Record what they
+        reported and the run carries on.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {(["success", "failure"] as const).map((outcome) => (
+          <form action={record} key={outcome}>
+            <input type="hidden" name="run_id" value={runId} />
+            <input type="hidden" name="step_key" value={step.key} />
+            <input type="hidden" name="reporter" value={reporter} />
+            <input type="hidden" name="outcome" value={outcome} />
+            <SubmitButton
+              label={outcome === "success" ? "Provider confirmed" : "Provider reported a failure"}
+              pendingLabel="Recording…"
+              variant={outcome === "success" ? "primary" : "secondary"}
+            />
+          </form>
+        ))}
+      </div>
+      {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
     </div>
   );
 }

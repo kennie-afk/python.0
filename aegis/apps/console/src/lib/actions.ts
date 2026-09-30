@@ -67,7 +67,9 @@ export async function signIn(_state: FormState, form: FormData): Promise<FormSta
     sameSite: "lax" as const,
     path: "/",
     maxAge: 60 * 55,
-    secure: process.env.NODE_ENV === "production"
+    // A production build over plain http from any host but localhost would have its cookie
+    // silently dropped; AEGIS_COOKIE_SECURE=false is for that, and only that, situation.
+    secure: process.env.NODE_ENV === "production" && process.env.AEGIS_COOKIE_SECURE !== "false"
   };
   store.set(tokenCookieName, session.token, options);
   store.set(tenantCookieName, session.tenant_id, options);
@@ -143,6 +145,24 @@ export async function rejectStep(_state: FormState, form: FormData): Promise<For
     return failed("A rejection needs both a name and a reason.");
   }
   return actOnStep(`/v1/runs/${runId}/steps/${stepKey}/reject`, { approver, reason }, runId);
+}
+
+export async function resolveExternalStep(_state: FormState, form: FormData): Promise<FormState> {
+  const runId = text(form, "run_id");
+  const stepKey = text(form, "step_key");
+  const reporter = text(form, "reporter");
+  const succeeded = text(form, "outcome") === "success";
+  if (!reporter) {
+    return failed("Recording an outside result has to name who is recording it.");
+  }
+  return actOnStep(
+    `/v1/runs/${runId}/steps/${stepKey}/external`,
+    {
+      succeeded,
+      result: { [`${stepKey}_result`]: succeeded ? "CONFIRMED" : "FAILED", [`${stepKey}_reported_by`]: reporter }
+    },
+    runId
+  );
 }
 
 export async function retryStep(_state: FormState, form: FormData): Promise<FormState> {
@@ -241,13 +261,55 @@ export async function checkAdverseImpact(
   try {
     const result = await api.post<AdverseImpactResponse>(
       "/v1/bias/adverse-impact",
-      { outcomes, minimum_group_size: Number(text(form, "minimum_group_size") || 30) },
+      {
+        outcomes,
+        minimum_group_size: Number(text(form, "minimum_group_size") || 30),
+        label: `${text(form, "stage") || "Selection"} by ${text(form, "comparison") || "group"}`
+      },
       session.token
     );
     return { error: null, message: null, result };
   } catch (error) {
     return { error: describeError(error), message: null, result: null };
   }
+}
+
+/** Opens a retention conversation for someone the model flagged, from the roster. */
+export async function startRetentionConversation(form: FormData): Promise<void> {
+  const session = await requireSession();
+  const subject = text(form, "subject_key");
+  if (!subject) {
+    redirect("/attrition?error=" + encodeURIComponent("That row had no employee reference."));
+  }
+
+  // The calendar refuses double-bookings, so spread conversations across working-hour slots.
+  const slot = new Date();
+  slot.setDate(slot.getDate() + 2);
+  slot.setHours(8, 0, 0, 0);
+  slot.setMinutes(slot.getMinutes() + (Math.floor(Date.now() / 1000) % 40) * 45);
+
+  let run: RunView | null = null;
+  let problem: string | null = null;
+  try {
+    run = await api.post<RunView>(
+      "/v1/runs",
+      {
+        workflow: "retention_intervention",
+        subject_id: subject,
+        context: { attendees: ["line.manager@example.org"], starts_at: slot.toISOString() }
+      },
+      session.token
+    );
+  } catch (error) {
+    problem = describeError(error);
+  }
+
+  if (problem || !run) {
+    redirect("/attrition?error=" + encodeURIComponent(problem ?? "The run could not be started."));
+  }
+  revalidatePath("/runs");
+  revalidatePath("/");
+  redirect(`/runs/${run.run_id}`);
 }
 
 export interface ScoringState extends FormState {
@@ -292,6 +354,8 @@ export async function scoreEmployee(
       { employees: [employee] },
       session.token
     );
+    revalidatePath("/attrition");
+    revalidatePath("/");
     return { error: null, message: null, result };
   } catch (error) {
     return { error: describeError(error), message: null, result: null };
