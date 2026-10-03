@@ -6,16 +6,6 @@ import { ApprovalActions, ExternalResultAction, RetryAction } from "@/components
 import { Badge, Card, KeyValue, Notice, PageHeader, secondaryButtonClass } from "@/components/ui";
 import type { RunView, WorkflowCatalogue } from "@/lib/types";
 
-const DOT: Record<string, string> = {
-  COMPLETED: "bg-[var(--color-good)]",
-  SKIPPED: "bg-[var(--color-faint)]",
-  PENDING: "bg-[#cddcde]",
-  AWAITING_APPROVAL: "bg-[var(--color-warn)]",
-  AWAITING_EXTERNAL: "bg-[var(--color-warn)]",
-  FAILED: "bg-[var(--color-danger)]",
-  DENIED: "bg-[var(--color-danger)]",
-  REJECTED: "bg-[var(--color-danger)]"
-};
 
 export default async function RunPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
@@ -84,11 +74,6 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
             const spec = definition?.steps.find((item) => item.key === step.key);
             return (
               <li key={step.key} className="group relative">
-                <span
-                  className={`absolute -left-[1.6875rem] top-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-[var(--color-surface)] ${
-                    DOT[step.status] ?? "bg-[#cddcde]"
-                  }`}
-                />
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{step.key.replaceAll("_", " ")}</span>
                   <Badge value={step.status} />

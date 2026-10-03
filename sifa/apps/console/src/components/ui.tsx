@@ -166,14 +166,13 @@ function sentence(value: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function Badge({ value, dot }: { value: string; dot?: boolean }) {
+export function Badge({ value }: { value: string }) {
   const key = value.toUpperCase().replaceAll(" ", "_");
   const tone = TONE[key] ?? "bg-[var(--color-raised)] text-[var(--color-muted)]";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${tone}`}
     >
-      {dot ? <span className="h-1.5 w-1.5 rounded-full bg-current" /> : null}
       {sentence(value)}
     </span>
   );

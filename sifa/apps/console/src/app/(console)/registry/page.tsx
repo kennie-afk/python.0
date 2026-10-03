@@ -69,7 +69,6 @@ export default async function RegistryPage() {
                   <ol className="relative mt-3 space-y-4 border-l border-[var(--color-line)] pl-6">
                     {entry.history.map((event, index) => (
                       <li key={`${event.at}-${index}`} className="relative">
-                        <span className="absolute -left-[1.6875rem] top-1.5 h-2.5 w-2.5 rounded-full bg-[var(--color-brand)] ring-4 ring-[var(--color-surface)]" />
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge value={event.stage} />
                           <span className="text-xs text-[var(--color-faint)]">{new Date(event.at).toLocaleString()}</span>

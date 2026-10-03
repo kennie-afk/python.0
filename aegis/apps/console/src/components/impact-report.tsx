@@ -21,7 +21,7 @@ export function ImpactReport({ report }: { report: AdverseImpactResponse }) {
             {report.minimum_group_size ? ` · groups under ${report.minimum_group_size} excluded` : ""}
           </p>
         </div>
-        <Badge value={report.verdict} dot />
+        <Badge value={report.verdict} />
       </header>
       <div className="space-y-4 px-5 pb-5">
         <p className="text-[0.8125rem] leading-relaxed">{report.summary}</p>
