@@ -219,6 +219,20 @@ alembic upgrade head
 Schema is versioned rather than created implicitly, and the initial revision applies and
 reverses cleanly.
 
+### Tenant isolation in the database
+
+Every query carries its tenant, and on PostgreSQL the database enforces it too. The API connects as
+`aegis_app`, a role that owns nothing, is not a superuser and cannot bypass row-level security;
+each transaction binds the caller's tenant (`aegis.tenant_id`), and a policy on every tenant table
+shows only that tenant's rows. A session with no tenant sees nothing. The one lookup that cannot know
+the tenant first, an API key being presented, goes through a `SECURITY DEFINER` function that
+returns that key's own row only. The API refuses to start as a superuser or `BYPASSRLS` role.
+
+Two connections therefore exist: `AEGIS_DATABASE_URL` (runtime, `aegis_app`) and `AEGIS_MIGRATION_URL`
+(the owner, used by `alembic` and by tenant provisioning). `AEGIS_APP_PASSWORD` is applied to the
+role after each migration run. `tests/persistence/test_row_level_security.py` proves all of this
+against a real PostgreSQL (skipped when none is reachable).
+
 
 
 ## Demo in five minutes
@@ -227,7 +241,7 @@ Nothing here needs an API key, a model or a mail server: with those left empty A
 its deterministic model and sends mail to a mock transport.
 
 ```
-cp .env.example .env          # then set POSTGRES_PASSWORD, AEGIS_JWT_SECRET, AEGIS_ANONYMISATION_SALT
+cp .env.example .env          # then set POSTGRES_PASSWORD, AEGIS_APP_PASSWORD, AEGIS_JWT_SECRET, AEGIS_ANONYMISATION_SALT
 make demo
 ```
 

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import ClassVar
 from uuid import UUID
 
-from sqlalchemy import delete, distinct, func, or_, select
+from sqlalchemy import delete, distinct, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from aegis.agents.workflow import (
@@ -424,6 +424,22 @@ class ApiKeyRepository:
         self._session.flush()
 
     def resolve(self, key_hash: str) -> ApiKeyRow | None:
+        """Look a key up before anyone knows which tenant it belongs to.
+
+        On PostgreSQL that is a SECURITY DEFINER function, the one deliberate gap in row-level
+        security:
+        it returns the key's own row only, and only for the exact hash presented."""
+        bind = self._session.get_bind()
+        if bind.dialect.name == "postgresql":
+            found = self._session.execute(
+                text("SELECT * FROM aegis_resolve_api_key(:hash)"), {"hash": key_hash}
+            ).mappings().first()
+            if found is None:
+                return None
+            return ApiKeyRow(
+                key_hash=found["key_hash"], tenant_id=found["tenant_id"], label=found["label"],
+                roles=found["roles"], active=found["active"], revoked_at=found["revoked_at"],
+            )
         row = self._session.get(ApiKeyRow, key_hash)
         if row is None or not row.active:
             return None

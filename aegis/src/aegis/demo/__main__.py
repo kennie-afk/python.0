@@ -11,7 +11,7 @@ import httpx
 from aegis.cli.provision import provision_tenant
 from aegis.demo.seed import DemoSeeder
 from aegis.persistence.repositories import purge_tenant
-from aegis.persistence.session import Database
+from aegis.persistence.session import Database, admin_database_url
 
 DEMO_TENANT = str(uuid.uuid5(uuid.NAMESPACE_URL, "aegis-demo:kijani-logistics"))
 DEMO_NAME = "Kijani Logistics (demo)"
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    database = Database(args.database_url) if args.database_url else Database()
+    database = Database(args.database_url) if args.database_url else Database(admin_database_url())
     if database.is_sqlite:
         database.create_all()
 

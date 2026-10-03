@@ -4,7 +4,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -14,6 +14,22 @@ DEFAULT_URL = "postgresql+psycopg://aegis:aegis@localhost:5432/aegis"
 
 def database_url() -> str:
     return os.environ.get("AEGIS_DATABASE_URL", DEFAULT_URL)
+
+def admin_database_url() -> str:
+    """The owner connection: migrations, provisioning a tenant, the demo seed. Never the runtime
+    API.
+
+    The API connects as an unprivileged role (see migrations tenant_isolation) that owns nothing and
+    cannot bypass row-level security. Operations that legitimately span tenants use this URL
+    instead:
+    AEGIS_ADMIN_DATABASE_URL, else AEGIS_MIGRATION_URL, else the ordinary URL (development and
+    SQLite).
+    """
+    return (
+        os.environ.get("AEGIS_ADMIN_DATABASE_URL")
+        or os.environ.get("AEGIS_MIGRATION_URL")
+        or database_url()
+    )
 
 def build_engine(url: str | None = None, echo: bool = False) -> Engine:
     resolved = url or database_url()
@@ -50,9 +66,22 @@ class Database:
         Base.metadata.drop_all(self._engine)
 
     @contextmanager
-    def session(self) -> Iterator[Session]:
+    def session(self, tenant_id: str | None = None) -> Iterator[Session]:
+        """One transaction. On PostgreSQL the tenant is bound for it, so row-level security
+        shows the
+        caller only that tenant's rows. SQLite (the unit tests) has no row-level security, so there
+        the argument changes nothing and the repositories' own tenant filters are the only guard.
+
+        A session opened without a tenant sees no tenant rows at all on PostgreSQL: the few
+        operations that cannot know the tenant yet (an API key being exchanged) go through
+        SECURITY DEFINER functions instead."""
         session = self._factory()
         try:
+            if tenant_id is not None and not self.is_sqlite:
+                session.execute(
+                    text("SELECT set_config('aegis.tenant_id', :tenant, true)"), {"tenant":
+                    tenant_id}
+                )
             yield session
             session.commit()
         except Exception:
@@ -60,6 +89,25 @@ class Database:
             raise
         finally:
             session.close()
+
+    def assert_runtime_role_is_safe(self) -> None:
+        """Refuse to start as a role that row-level security does not apply to.
+
+        A superuser or BYPASSRLS role silently sees every tenant, which turns the database backstop
+        into decoration. Skipped on SQLite."""
+        if self.is_sqlite:
+            return
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+            ).one()
+        if row.rolsuper or row.rolbypassrls:
+            raise RuntimeError(
+                "AEGIS_DATABASE_URL connects as a superuser or BYPASSRLS role, so tenant "
+                "isolation in the database does not apply. Connect as the unprivileged runtime "
+                "role (aegis_app) and keep the owner credentials in AEGIS_MIGRATION_URL for "
+                "migrations only."
+            )
 
     def dispose(self) -> None:
         self._engine.dispose()

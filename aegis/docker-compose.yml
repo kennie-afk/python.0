@@ -22,7 +22,12 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      AEGIS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}
+      # Two roles. The API runs as aegis_app, which owns nothing and cannot bypass row-level security,
+      # so the database itself keeps tenants apart. The owner is used only to migrate (and to provision
+      # a tenant), and the API refuses to start if it is connected as a superuser.
+      AEGIS_DATABASE_URL: postgresql+psycopg://aegis_app:${AEGIS_APP_PASSWORD:?AEGIS_APP_PASSWORD must be set (16+ characters)}@postgres:5432/${POSTGRES_DB:-aegis}
+      AEGIS_MIGRATION_URL: postgresql+psycopg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}
+      AEGIS_APP_PASSWORD: ${AEGIS_APP_PASSWORD}
       AEGIS_JWT_SECRET: ${AEGIS_JWT_SECRET:?AEGIS_JWT_SECRET must be set and at least 32 characters}
       AEGIS_ANONYMISATION_SALT: ${AEGIS_ANONYMISATION_SALT:?AEGIS_ANONYMISATION_SALT must be set}
       AEGIS_MODEL_API_KEY: ${AEGIS_MODEL_API_KEY:-}

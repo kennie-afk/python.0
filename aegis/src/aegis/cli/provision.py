@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from aegis.auth.tokens import generate_api_key, hash_api_key
 from aegis.governance.policy import TenantPolicy
 from aegis.persistence.repositories import ApiKeyRepository, PolicyRepository
-from aegis.persistence.session import Database
+from aegis.persistence.session import Database, admin_database_url
 
 POSTURES = {
     "conservative": TenantPolicy.conservative,
@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="emit machine readable output")
     args = parser.parse_args(argv)
 
-    database = Database(args.database_url) if args.database_url else Database()
+    database = Database(args.database_url) if args.database_url else Database(admin_database_url())
     if database.is_sqlite:
         database.create_all()
 

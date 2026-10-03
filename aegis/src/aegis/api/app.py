@@ -124,6 +124,7 @@ def _required_secret(name: str, minimum: int) -> str:
 class Platform:
     def __init__(self, database: Database | None = None, model: LanguageModel | None = None):
         self.database = database or Database()
+        self.database.assert_runtime_role_is_safe()
         if self.database.is_sqlite:
             # Postgres schema is versioned through Alembic (see migrations/) and
             # created by `alembic upgrade head` before this process starts; only
@@ -430,7 +431,7 @@ def start_run(request: StartRunRequest, caller: PrincipalDep, platform: Platform
             detail=f"unknown workflow {request.workflow!r}",
         )
 
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         runtime = platform.runtime(session, caller.tenant_id)
         run = runtime.start(definition, caller.tenant_uuid, request.subject_id, request.context)
         runtime.advance(run)
@@ -455,7 +456,7 @@ def list_runs(
 ) -> list[RunView]:
     """Newest first. Filters run in the database; `X-Total-Count` is the number that matched."""
     bounded_limit = max(1, min(limit, _RUNS_PAGE_MAX))
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         runs, total = RunRepository(session).search(
             caller.tenant_id,
             workflow=workflow,
@@ -470,7 +471,7 @@ def list_runs(
 
 @app.get("/v1/runs/{run_id}")
 def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         run = RunRepository(session).load(caller.tenant_id, run_id)
         if run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
@@ -479,7 +480,7 @@ def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView
 def _mutate_run(
     platform: Platform, caller: Principal, run_id: str, operation: str, **kwargs: Any
 ) -> RunView:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         run = RunRepository(session).load(caller.tenant_id, run_id)
         if run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
@@ -588,7 +589,7 @@ def screen_candidate(
         ) from error
 
     # Only the pseudonymous key and the verdict are kept; the record itself never is.
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         ScreeningRepository(session).add(
             caller.tenant_id,
             subject_key=result.subject_key,
@@ -621,7 +622,7 @@ def list_screenings(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[StoredScreeningView]:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         rows, total = ScreeningRepository(session).search(
             caller.tenant_id, recommendation=recommendation, query=q, limit=limit, offset=offset
         )
@@ -689,7 +690,7 @@ def adverse_impact(
 
     # A finding is evidence, so it is stored and its verdict is written into the hash chain:
     # a flagged analysis cannot later be quietly deleted without breaking the audit trail.
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         verdict = str(report.verdict)
         ledger = PersistentLedger(session, caller.tenant_id)
         entry = ledger.append(
@@ -731,7 +732,7 @@ def list_impact_reports(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[AdverseImpactResponse]:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         rows, total = ImpactReportRepository(session).search(
             caller.tenant_id, verdict=verdict, limit=limit, offset=offset
         )
@@ -742,7 +743,7 @@ def list_impact_reports(
 def get_impact_report(
     report_id: int, caller: PrincipalDep, platform: PlatformDep
 ) -> AdverseImpactResponse:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         row = ImpactReportRepository(session).get(caller.tenant_id, report_id)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="report not found")
@@ -777,7 +778,7 @@ def train_model(
     model = AttritionModel(request.algorithm)
     report = model.train([_snapshot(item) for item in request.employees], request.left)
 
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         ModelRepository(session).save(
             caller.tenant_id, model, report.rows, report.positives, report.feature_importance
         )
@@ -792,7 +793,7 @@ def train_model(
 
 @app.get("/v1/attrition/model")
 def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         row = ModelRepository(session).describe(caller.tenant_id)
         if row is None:
             return ModelStatusView(trained=False)
@@ -809,7 +810,7 @@ def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView
 def score_employees(
     request: ScoreRequest, caller: PrincipalDep, platform: PlatformDep
 ) -> list[AttritionScoreView]:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         model = ModelRepository(session).load(caller.tenant_id)
 
     if model is None:
@@ -837,7 +838,7 @@ def score_employees(
         for score in scores
     ]
 
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         risks = RiskScoreRepository(session)
         for view in views:
             risks.upsert(
@@ -860,7 +861,7 @@ def list_scores(
     offset: int = Query(default=0, ge=0),
 ) -> list[StoredScoreView]:
     """The latest score for each employee, highest risk first."""
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         rows, total = RiskScoreRepository(session).search(
             caller.tenant_id, band=band, limit=limit, offset=offset
         )
@@ -888,7 +889,7 @@ def read_ledger(
     limit: int = _LEDGER_PAGE_DEFAULT,
 ) -> list[LedgerEntryView]:
     bounded_limit = max(1, min(limit, _LEDGER_PAGE_MAX))
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         entries = LedgerRepository(session).entries(
             caller.tenant_id, after_sequence=after, limit=bounded_limit
         )
@@ -910,7 +911,7 @@ def read_ledger(
 
 @app.get("/v1/ledger/verify")
 def verify_ledger(caller: PrincipalDep, platform: PlatformDep) -> IntegrityView:
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         report = LedgerRepository(session).verify(caller.tenant_id)
 
     return IntegrityView(
@@ -947,7 +948,7 @@ def search_ledger(
     offset: int = Query(default=0, ge=0),
 ) -> list[LedgerEntryView]:
     """Newest first, filtered and paged in the database; `X-Total-Count` is the match count."""
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         entries, total = LedgerRepository(session).search(
             caller.tenant_id,
             outcome=outcome,
@@ -989,7 +990,7 @@ def export_ledger(caller: PrincipalDep, platform: PlatformDep) -> StreamingRespo
         writer = csv.writer(buffer)
         writer.writerow(_EXPORT_COLUMNS)
         yield buffer.getvalue()
-        with platform.database.session() as session:
+        with platform.database.session(caller.tenant_id) as session:
             for entry in LedgerRepository(session).stream(caller.tenant_id):
                 buffer.seek(0)
                 buffer.truncate()
@@ -1021,7 +1022,7 @@ def export_ledger(caller: PrincipalDep, platform: PlatformDep) -> StreamingRespo
 def overview(caller: PrincipalDep, platform: PlatformDep) -> OverviewView:
     """Counts for the console's front page, computed in the database rather than by fetching
     every run and ledger entry and counting them in the browser."""
-    with platform.database.session() as session:
+    with platform.database.session(caller.tenant_id) as session:
         runs = RunRepository(session).counts(caller.tenant_id)
         ledger = LedgerRepository(session).counts(caller.tenant_id)
         return OverviewView(
