@@ -45,7 +45,7 @@ export function AccountMenu({ subject, tenantId }: { subject: string; tenantId: 
   return (
     <div ref={container} className="relative">
       {open ? (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-56 overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_8px_24px_rgba(12,42,48,0.14)]">
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-56 overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_8px_24px_rgba(27, 36, 8,0.14)]">
           <div className="border-b border-[var(--color-line)] px-3 py-2.5">
             <p className="truncate text-sm font-medium">{subject}</p>
             <p className="mt-0.5 break-all font-mono text-[0.6875rem] text-[var(--color-faint)]">

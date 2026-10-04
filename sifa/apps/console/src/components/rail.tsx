@@ -43,7 +43,7 @@ export function Rail({ items }: { items: RailItem[] }) {
       </nav>
 
       <div className="flex flex-col items-center gap-1.5 px-2 pb-6 pt-4">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-violet)] text-sm font-semibold text-white">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-accent)] text-sm font-semibold text-white">
           S
         </span>
         <span className="text-[0.6875rem] font-medium text-[var(--color-muted)]">Sifa</span>
