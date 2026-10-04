@@ -43,7 +43,7 @@ export default async function DriftPage({
             href={`/drift?shift=${value}`}
             className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
               applied === value
-                ? "bg-[var(--color-brand)] font-medium text-white"
+                ? "bg-[var(--color-accent)] font-medium text-white"
                 : "border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:bg-[var(--color-raised)]"
             }`}
           >

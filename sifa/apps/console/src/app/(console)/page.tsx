@@ -82,7 +82,7 @@ export default async function OverviewPage() {
                   Likelihood ratio
                 </span>
                 <span className="text-sm tabular-nums">
-                  {experiment.likelihood_ratio.toExponential(2)} / {experiment.threshold}
+                  {experiment.likelihood_ratio >= 0.01 ? experiment.likelihood_ratio.toFixed(2) : experiment.likelihood_ratio.toExponential(2)} / {experiment.threshold}
                 </span>
               </div>
               <Meter value={Math.min(experiment.likelihood_ratio / experiment.threshold, 1)} />

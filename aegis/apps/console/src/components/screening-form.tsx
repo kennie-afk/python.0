@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { screenCandidate } from "@/lib/actions";
 import type { ScreeningState } from "@/lib/actions";
+import { humanizeFields } from "@/lib/humanize";
 
 const initial: ScreeningState = { error: null, message: null, result: null };
 
@@ -211,7 +212,7 @@ export function ScreeningForm() {
               </span>
             </div>
             <Meter value={state.result.score} />
-            <p className="text-[0.8125rem] text-[var(--color-muted)]">{state.result.rationale}</p>
+            <p className="text-[0.8125rem] text-[var(--color-muted)]">{humanizeFields(state.result.rationale)}</p>
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <div>
                 <dt className="text-[0.625rem] font-medium uppercase tracking-[0.06em] text-[var(--color-faint)]">
@@ -230,7 +231,7 @@ export function ScreeningForm() {
                   Signals the model used
                 </dt>
                 <dd className="mt-0.5 text-sm">
-                  {state.result.signals_considered.join(", ") || "none"}
+                  {state.result.signals_considered.map(humanizeFields).join(", ") || "none"}
                 </dd>
               </div>
               <div>

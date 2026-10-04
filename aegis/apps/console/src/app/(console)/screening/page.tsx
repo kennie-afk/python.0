@@ -5,6 +5,7 @@ import { Badge, Card, EmptyState, Meter, Notice, PageHeader, Table, rowClass } f
 import { api, describeError } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import type { StoredScreeningView } from "@/lib/types";
+import { humanizeFields } from "@/lib/humanize";
 
 export default async function ScreeningPage({
   searchParams
@@ -93,8 +94,8 @@ export default async function ScreeningPage({
                     <td className="px-3 py-2.5">
                       <Badge value={row.recommendation} />
                     </td>
-                    <td className="max-w-[20rem] px-3 py-2.5 text-xs text-[var(--color-muted)]" title={row.rationale}>
-                      <span className="line-clamp-2">{row.rationale}</span>
+                    <td className="max-w-[20rem] px-3 py-2.5 text-xs text-[var(--color-muted)]" title={humanizeFields(row.rationale)}>
+                      <span className="line-clamp-2">{humanizeFields(row.rationale)}</span>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[0.6875rem] text-[var(--color-faint)]" title={row.requirement}>
                       {row.prompt_fingerprint.slice(0, 10)}

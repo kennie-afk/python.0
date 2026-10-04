@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/session";
 import { ApprovalActions, ExternalResultAction, RetryAction } from "@/components/step-actions";
 import { Badge, Card, KeyValue, Notice, PageHeader, secondaryButtonClass } from "@/components/ui";
 import type { RunView, WorkflowCatalogue } from "@/lib/types";
+import { humanizeReason } from "@/lib/humanize";
 
 
 export default async function RunPage({ params }: { params: Promise<{ runId: string }> }) {
@@ -89,7 +90,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                   <ul className="mt-2 space-y-1">
                     {step.reasons.map((reason) => (
                       <li key={reason} className="text-xs text-[var(--color-faint)]">
-                        {reason}
+                        {humanizeReason(reason)}
                       </li>
                     ))}
                   </ul>

@@ -5,6 +5,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { PAGE_SIZE, Pager, first, pageOf } from "@/components/pager";
 import { Badge, Card, EmptyState, Notice, PageHeader, Table, rowClass, secondaryButtonClass } from "@/components/ui";
 import type { IntegrityView, LedgerEntryView } from "@/lib/types";
+import { humanizeReason } from "@/lib/humanize";
 
 export default async function LedgerPage({
   searchParams
@@ -145,8 +146,8 @@ export default async function LedgerPage({
                     <Badge value={entry.outcome} />
                   </td>
                   <td className="px-3 py-2.5 text-[var(--color-muted)]">{entry.approver ?? "agent"}</td>
-                  <td className="max-w-[22rem] px-3 py-2.5 text-xs text-[var(--color-faint)]" title={entry.reasons.join("; ")}>
-                    <span className="line-clamp-2">{entry.reasons.join("; ") || "—"}</span>
+                  <td className="max-w-[22rem] px-3 py-2.5 text-xs text-[var(--color-faint)]" title={entry.reasons.map(humanizeReason).join("; ")}>
+                    <span className="line-clamp-2">{entry.reasons.map(humanizeReason).join("; ") || "—"}</span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-xs text-[var(--color-faint)]">
                     {new Date(entry.recorded_at).toLocaleString()}

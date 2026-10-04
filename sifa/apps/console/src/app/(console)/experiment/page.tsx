@@ -62,7 +62,7 @@ export default async function ExperimentPage() {
                   Progress toward the boundary
                 </span>
                 <span className="text-sm tabular-nums">
-                  {state.likelihood_ratio.toExponential(2)} / {state.threshold}
+                  {state.likelihood_ratio >= 0.01 ? state.likelihood_ratio.toFixed(2) : state.likelihood_ratio.toExponential(2)} / {state.threshold}
                 </span>
               </div>
               <Meter value={progress} />
