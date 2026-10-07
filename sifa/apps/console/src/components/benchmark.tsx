@@ -1,42 +1,31 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { runBenchmark } from "@/lib/actions";
-import { idleBenchmark } from "@/lib/action-state";
+import { useEffect, useState, type FormEvent } from "react";
+import { pollBenchmark, startBenchmark } from "@/lib/actions";
+import { idleBenchmark, type BenchmarkState } from "@/lib/action-state";
 import { Card, Notice, Select, Stat, Table, buttonClass } from "@/components/ui";
 
 const ESTIMATE: Record<string, number> = { "1000": 4, "2000": 10, "4000": 25 };
 
-function Progress({ corpus }: { corpus: string }) {
-  const { pending } = useFormStatus();
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    if (!pending) {
-      setSeconds(0);
-      return;
-    }
-    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [pending]);
-
+function Progress({ corpus, running, seconds }: { corpus: string; running: boolean; seconds: number }) {
   const estimate = ESTIMATE[corpus] ?? 10;
   return (
     <div className="space-y-3">
-      <button type="submit" className={buttonClass} disabled={pending}>
-        {pending ? `Building… ${seconds}s` : "Run the benchmark"}
+      <button type="submit" className={buttonClass} disabled={running}>
+        {running ? `Building… ${seconds}s` : "Run the benchmark"}
       </button>
-      {pending ? (
+      {running ? (
         <div role="status" aria-live="polite" className="space-y-1.5">
           <div className="h-1.5 w-full max-w-sm overflow-hidden rounded-sm bg-[var(--color-line)]">
             <div
-              className="h-full bg-[var(--color-accent)] transition-all duration-1000"
+              className="h-full bg-[var(--color-accent)]"
               style={{ width: `${Math.min(95, (seconds / estimate) * 100)}%` }}
             />
           </div>
           <p className="text-xs text-[var(--color-muted)]">
-            Inserting vectors one at a time into a graph that is still being built, so the cost grows faster
-            than the corpus. About {estimate} seconds for this size. The API runs one benchmark at a time.
+            Running as a background job on the API and polled every second. Inserting vectors one at a
+            time into a graph that is still being built, so the cost grows faster than the corpus. About{" "}
+            {estimate} seconds for this size. The API runs one benchmark at a time.
           </p>
         </div>
       ) : null}
@@ -45,8 +34,43 @@ function Progress({ corpus }: { corpus: string }) {
 }
 
 export function Benchmark() {
-  const [state, action] = useActionState(runBenchmark, idleBenchmark);
+  const [state, setState] = useState<BenchmarkState>(idleBenchmark);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [seconds, setSeconds] = useState(0);
   const [corpus, setCorpus] = useState("2000");
+
+  async function start(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState(idleBenchmark);
+    const started = await startBenchmark(Number(corpus));
+    if (started.error || !started.jobId) {
+      setState({ ...idleBenchmark, error: started.error });
+      return;
+    }
+    setSeconds(0);
+    setJobId(started.jobId);
+  }
+
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+    const tick = window.setInterval(async () => {
+      setSeconds((value) => value + 1);
+      const job = await pollBenchmark(jobId);
+      if (cancelled) return;
+      if ("error" in job && !("status" in job)) {
+        setJobId(null);
+        setState({ ...idleBenchmark, error: job.error });
+      } else if ("status" in job && job.status !== "running") {
+        setJobId(null);
+        setState({ error: job.error, message: null, result: job.result });
+      }
+    }, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+    };
+  }, [jobId]);
 
   return (
     <div className="space-y-4">
@@ -54,7 +78,7 @@ export function Benchmark() {
         title="Scale test"
         description="Builds a fresh index of random vectors and compares graph search with exhaustive search at four search widths. This is the honest cost of the index: building it is expensive, querying it is not."
       >
-        <form action={action} className="space-y-4">
+        <form onSubmit={start} className="space-y-4">
           <div className="w-64">
             <Select
               label="Corpus size"
@@ -70,7 +94,7 @@ export function Benchmark() {
             />
           </div>
           {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
-          <Progress corpus={corpus} />
+          <Progress corpus={corpus} running={jobId !== null} seconds={seconds} />
         </form>
       </Card>
 

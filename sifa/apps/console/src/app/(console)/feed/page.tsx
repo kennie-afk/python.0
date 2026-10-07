@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { api, describeError } from "@/lib/api";
 import type { Feed, UserSummary } from "@/lib/types";
+import { FeedbackPanel } from "@/components/feedback-panel";
 import { UserPicker } from "@/components/user-picker";
 import { Badge, Card, EmptyState, Meter, Notice, PageHeader, Stat, Table } from "@/components/ui";
 
@@ -112,6 +113,19 @@ export default async function FeedPage({
                   ))}
                 </Table>
               )}
+            </Card>
+          </div>
+
+          <div className="mt-6">
+            <Card
+              title="Feedback"
+              description="Report what this person did with an item. This is the real signal path: it is stored against the impression, and counts once."
+            >
+              <FeedbackPanel
+                requestId={feed.request_id}
+                itemIds={feed.items.map((item) => item.item_id)}
+                outcomeSource={feed.outcome_source}
+              />
             </Card>
           </div>
 

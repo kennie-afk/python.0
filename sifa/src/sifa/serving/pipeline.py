@@ -66,6 +66,10 @@ class FeedPipeline:
         self._policy = policy or PolicyConfig()
         self._sampler = sampler or ThompsonSampler()
 
+    @property
+    def sampler(self) -> ThompsonSampler:
+        return self._sampler
+
     def _assemble_features(
         self, user_id: str, candidates: list[Candidate], as_of: datetime
     ) -> dict[str, dict[str, float]]:
@@ -87,6 +91,7 @@ class FeedPipeline:
         user_id: str,
         seen: set[str] | None = None,
         as_of: datetime | None = None,
+        ranker: LearningToRank | None = None,
     ) -> RankedFeed:
         started = time.perf_counter()
         moment = as_of or now()
@@ -109,7 +114,7 @@ class FeedPipeline:
             )
 
         features = self._assemble_features(user_id, candidates, moment)
-        ranked = self._ranker.rank(candidates, features)
+        ranked = (ranker or self._ranker).rank(candidates, features)
 
         ranked = apply_freshness(ranked, self._catalogue.published_at, moment, self._policy)
 

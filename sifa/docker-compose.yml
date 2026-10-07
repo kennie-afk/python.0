@@ -11,6 +11,13 @@ services:
       SIFA_CORS_ORIGINS: ${SIFA_CORS_ORIGINS:-}
       # Demo only: serve this many feeds at start-up and record a release history (about 11 ms each).
       SIFA_DEMO_WARMUP: ${SIFA_DEMO_WARMUP:-0}
+      # "simulated" computes each feed's outcome from the simulated world; "feedback" uses POST /v1/feedback.
+      SIFA_OUTCOME_MODE: ${SIFA_OUTCOME_MODE:-simulated}
+      SIFA_ALERT_WEBHOOK: ${SIFA_ALERT_WEBHOOK:-}
+      SIFA_RETRAIN_EVERY_SECONDS: ${SIFA_RETRAIN_EVERY_SECONDS:-0}
+    # Durable state (registry, counters, bandit, impressions, model artifacts). One replica only.
+    volumes:
+      - sifa-state:/app/state
 
   console:
     build:
@@ -24,3 +31,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  sifa-state:

@@ -21,13 +21,19 @@ def seed_release_history(platform: Platform) -> None:
     registry = platform.registry
     auc = platform.training.holdout_auc
 
-    second = registry.register("ranker", platform.ranker, {"auc": round(auc + 0.004, 4)})
+    note = f"{TAG}: reuses the v1 ranker, the metrics are illustrative"
+    card = platform.model_card(platform.ranker, 13, 0.0, note)
+    second = registry.register(
+        "ranker", platform.ranker, {"auc": round(auc + 0.004, 4)}, card=card
+    )
     v2 = second.version
     registry.transition("ranker", v2, Stage.SHADOW, f"offline AUC beat v1 {TAG}")
     registry.transition("ranker", v2, Stage.CANARY, f"shadow disagreement under 2% {TAG}")
     registry.transition("ranker", v2, Stage.LIVE, f"canary held for 48 h inside the guard {TAG}")
 
-    third = registry.register("ranker", platform.ranker, {"auc": round(auc - 0.011, 4)})
+    third = registry.register(
+        "ranker", platform.ranker, {"auc": round(auc - 0.011, 4)}, card=card
+    )
     v3 = third.version
     registry.transition("ranker", v3, Stage.SHADOW, f"retrained on the newest week {TAG}")
     registry.transition("ranker", v3, Stage.CANARY, f"shadow acceptable {TAG}")

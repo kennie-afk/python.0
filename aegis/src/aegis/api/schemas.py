@@ -61,16 +61,37 @@ class ModelStatusView(BaseModel):
     positives: int | None = None
     trained_at: str | None = None
     feature_importance: dict[str, float] = Field(default_factory=dict)
+    version: int | None = None
+    gate: str | None = None
+    data_hash: str | None = None
+    created_by: str | None = None
+    findings: list[str] = Field(default_factory=list)
+
+class ModelVersionView(BaseModel):
+    version: int
+    algorithm: str
+    rows: int
+    positives: int
+    data_hash: str
+    gate: str
+    active: bool
+    created_by: str
+    created_at: str
+    activated_at: str | None
+    feature_importance: dict[str, float]
+    fidelity: dict[str, Any]
 
 class ApprovalRequest(BaseModel):
-    approver: str = Field(min_length=1, max_length=200)
+    # Identity comes from the authenticated principal. A client may still send its own name, but
+    # it is only accepted when it matches, so it cannot be used to sign as somebody else.
+    approver: str | None = Field(default=None, min_length=1, max_length=200)
 
 class RejectionRequest(BaseModel):
-    approver: str = Field(min_length=1, max_length=200)
+    approver: str | None = Field(default=None, min_length=1, max_length=200)
     reason: str = Field(min_length=1, max_length=500)
 
 class RetryRequest(BaseModel):
-    actor: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(default=None, min_length=1, max_length=200)
     amendments: dict[str, Any] = Field(default_factory=dict)
 
 class ExternalResultRequest(BaseModel):
@@ -154,6 +175,10 @@ class TrainRequest(BaseModel):
     algorithm: str = Field(default="gradient_boosting")
     employees: list[EmployeeIn] = Field(min_length=40)
     left: list[bool] = Field(min_length=40)
+    # One label per employee (for example an age band), used ONLY to test the trained model for
+    # adverse impact. It is never a model feature and is not stored.
+    groups: list[str] | None = None
+    minimum_group_size: int = Field(default=30, ge=1)
 
 class TrainResponse(BaseModel):
     rows: int
@@ -161,6 +186,11 @@ class TrainResponse(BaseModel):
     positive_rate: float
     algorithm: str
     feature_importance: dict[str, float]
+    version: int
+    gate: str
+    active: bool
+    findings: list[str] = Field(default_factory=list)
+    fidelity: dict[str, Any] = Field(default_factory=dict)
 
 class ScoreRequest(BaseModel):
     employees: list[EmployeeIn] = Field(min_length=1)
@@ -181,6 +211,19 @@ class IntegrityView(BaseModel):
     entries_checked: int
     broken_at: int | None
     reason: str | None
+    signed: int = 0
+    unsigned: int = 0
+    signatures_checked: bool = False
+
+class LedgerHeadView(BaseModel):
+    tenant_id: str
+    sequence: int | None
+    entry_hash: str
+    entries: int
+    signed: bool
+    signature: str | None
+    key_fingerprint: str | None
+    generated_at: str
 
 class ScreenRequest(BaseModel):
     record: dict[str, Any]
@@ -233,3 +276,38 @@ class StoredScoreView(BaseModel):
     needs_intervention: bool
     drivers: list[DriverView]
     scored_at: str
+
+class ScoreHistoryView(BaseModel):
+    subject_key: str
+    probability: float
+    band: str
+    needs_intervention: bool
+    model_version: int | None
+    drivers: list[DriverView]
+    scored_at: str
+
+class KeyCreateRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    roles: list[str] = Field(min_length=1)
+
+class KeyView(BaseModel):
+    key_id: str
+    label: str
+    roles: list[str]
+    active: bool
+    created_at: str
+    created_by: str | None
+    revoked_at: str | None
+    tokens_valid_from: str | None
+
+class IssuedKeyView(KeyView):
+    api_key: str = Field(description="the secret; shown once and never again")
+
+class AlertView(BaseModel):
+    id: int
+    kind: str
+    message: str
+    created_at: str
+    delivered_at: str | None
+    attempts: int
+    last_error: str | None

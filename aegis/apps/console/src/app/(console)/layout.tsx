@@ -9,6 +9,10 @@ const ITEMS: RailItem[] = [
   { href: "/screening", label: "Screening", icon: "screening" },
   { href: "/attrition", label: "Retention", icon: "retention" },
   { href: "/compliance", label: "Compliance", icon: "compliance" },
+  { href: "/verification", label: "Verification", icon: "verification" },
+  { href: "/skills", label: "Skills", icon: "skills" },
+  { href: "/workforce", label: "Workforce", icon: "workforce" },
+  { href: "/sentiment", label: "Sentiment", icon: "sentiment" },
   { href: "/ledger", label: "Audit", icon: "ledger" }
 ];
 

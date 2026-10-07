@@ -24,6 +24,10 @@ HIRING_MANAGER = "Peter Otieno (Engineering)"
 IT_LEAD = "Amina Yusuf (IT)"
 RETAINED_AFTER = "Amina Yusuf (IT)"
 
+# The people who sign off in the demo. Each one signs in with a key of their own, because the
+# platform records the signed-in identity as the approver and refuses a name a caller makes up.
+DEMO_APPROVERS = (HR_PARTNER, HIRING_MANAGER, IT_LEAD)
+
 Say = Callable[[str], None]
 
 
@@ -39,9 +43,15 @@ class Summary:
 
 
 class DemoSeeder:
-    def __init__(self, client: httpx.Client, say: Say = print) -> None:
+    def __init__(
+        self,
+        client: httpx.Client,
+        say: Say = print,
+        approver_tokens: dict[str, str] | None = None,
+    ) -> None:
         self._http = client
         self._say = say
+        self._approver_tokens = approver_tokens or {}
         self.summary = Summary()
         # Interview slots must never collide: the calendar refuses a double-booking.
         self._slot = (datetime.now(UTC) + timedelta(days=3)).replace(
@@ -73,9 +83,16 @@ class DemoSeeder:
         body = {"workflow": workflow, "subject_id": subject, "context": context}
         return self._run("POST", "/v1/runs", json=body)
 
+    def _as(self, who: str) -> dict[str, str]:
+        token = self._approver_tokens.get(who)
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
     def _approve(self, run: dict[str, Any], step: str, who: str) -> dict[str, Any]:
         return self._run(
-            "POST", f"/v1/runs/{run['run_id']}/steps/{step}/approve", json={"approver": who}
+            "POST",
+            f"/v1/runs/{run['run_id']}/steps/{step}/approve",
+            json={},
+            headers=self._as(who),
         )
 
     # -- screening and compliance ---------------------------------------------------------
@@ -194,7 +211,8 @@ class DemoSeeder:
         self._call(
             "POST",
             f"/v1/runs/{run['run_id']}/steps/shortlist/reject",
-            json={"approver": HR_PARTNER, "reason": "Requisition filled by an internal move"},
+            json={"reason": "Requisition filled by an internal move"},
+            headers=self._as(HR_PARTNER),
         )
 
         # An outreach that failed for a real reason (a mistyped address) and is left for a person.
@@ -211,10 +229,7 @@ class DemoSeeder:
         self._call(
             "POST",
             f"/v1/runs/{run['run_id']}/steps/engage/retry",
-            json={
-                "actor": HR_PARTNER,
-                "amendments": {"recipient_email": advance[10].record["email"]},
-            },
+            json={"amendments": {"recipient_email": advance[10].record["email"]}},
         )
 
     # -- onboarding, retention, offboarding -----------------------------------------------

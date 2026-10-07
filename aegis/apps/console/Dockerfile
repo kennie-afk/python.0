@@ -13,12 +13,12 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-RUN addgroup -S console && adduser -S console -G console
+RUN addgroup -S -g 10002 console && adduser -S -u 10002 console -G console
 
 COPY --from=build --chown=console:console /app/.next/standalone ./
 COPY --from=build --chown=console:console /app/public ./public
 
-USER console
+USER 10002
 EXPOSE 3000
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

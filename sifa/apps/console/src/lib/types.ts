@@ -48,6 +48,9 @@ export interface Feed {
   user_id: string;
   user_topic: string;
   variant: string;
+  model_version: number;
+  model_stage: string;
+  outcome_source: "simulated" | "feedback";
   retrieved: number;
   latency_ms: number;
   ndcg_at_10: number;
@@ -97,7 +100,41 @@ export interface RegistryEntry {
   traffic: number;
   metrics: Record<string, number>;
   created_at: string;
-  history: { at: string; stage: string; reason: string }[];
+  history: { at: string; stage: string; reason: string; actor: string }[];
+  card?: ModelCard;
+}
+
+export interface ModelCard {
+  data_fingerprint: string;
+  feature_schema_hash: string;
+  config: Record<string, unknown>;
+  seeds: Record<string, number>;
+  libraries: Record<string, string>;
+  git_sha: string | null;
+  metrics: Record<string, number | boolean>;
+  training_rows: number;
+  positives: number;
+  trained_at: string;
+  training_seconds: number;
+  trained_on: string;
+  note?: string;
+  artifact?: { file: string; sha256: string };
+}
+
+export interface LiveDrift {
+  source: string;
+  rows: number;
+  minimum_rows: number;
+  ready: boolean;
+  reports: DriftRow[];
+  trained_but_not_served: string[];
+}
+
+export interface BenchmarkJob {
+  job_id: string;
+  status: "running" | "done" | "failed";
+  result: BenchmarkResult | null;
+  error: string | null;
 }
 
 export interface DriftRow {
@@ -146,4 +183,51 @@ export interface BenchmarkResult {
   build_seconds: number;
   exhaustive_ms: number;
   curve: BenchmarkPoint[];
+}
+
+export interface RankingScores {
+  hit_rate_at_10: number;
+  hit_rate_ci95_low: number;
+  hit_rate_ci95_high: number;
+  ndcg_at_10: number;
+  mrr_at_10: number;
+}
+
+export interface AnnSweepRow {
+  ef_search: number;
+  sifa_recall_at_10: number;
+  sifa_p50_ms: number;
+  sifa_p95_ms: number;
+  faiss_recall_at_10: number;
+  faiss_p50_ms: number;
+  faiss_p95_ms: number;
+}
+
+export interface MovielensEvaluation {
+  dataset: string;
+  users: number;
+  items: number;
+  train_interactions: number;
+  dropped_users_cold_target: number;
+  protocol: string;
+  chosen: {
+    dimension: number;
+    epochs: number;
+    learning_rate: number;
+    negatives: number;
+    final_train_seconds: number;
+  };
+  test: Record<string, RankingScores>;
+  ann_end_to_end_ef: number;
+  ann_index: {
+    vectors: number;
+    dimension: number;
+    queries: number;
+    sifa_build_seconds: number;
+    faiss_build_seconds: number;
+    numpy_exact_p50_ms: number;
+    numpy_exact_p95_ms: number;
+    sweep: AnnSweepRow[];
+  };
+  machine: string;
 }

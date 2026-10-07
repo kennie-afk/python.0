@@ -65,3 +65,9 @@ class ThompsonSampler:
         mean = state.successes / total
         variance = (state.successes * state.failures) / (total**2 * (total + 1.0))
         return mean, float(np.sqrt(variance))
+
+    def export(self) -> dict[str, list[float]]:
+        return {arm: [state.successes, state.failures] for arm, state in self.arms.items()}
+
+    def load(self, arms: dict[str, list[float]]) -> None:
+        self.arms = {arm: ArmState(pair[0], pair[1]) for arm, pair in arms.items()}

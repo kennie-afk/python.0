@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: aegis
+  labels: {app.kubernetes.io/name: api, app.kubernetes.io/part-of: aegis}
+spec:
+  selector: {app.kubernetes.io/name: api}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: aegis
+  labels: {app.kubernetes.io/name: api, app.kubernetes.io/part-of: aegis}
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/name: api}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: api, app.kubernetes.io/part-of: aegis}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: api}
+      initContainers:
+        # The API exits if the database is unreachable at start-up, which would crash-loop it while Postgres comes up.
+        # Waiting here instead keeps restarts meaningful. It reuses the API image, so no extra image is needed.
+        - name: wait-for-postgres
+          image: aegis-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: [bash, -c, "until (echo > /dev/tcp/postgres/5432) 2>/dev/null; do echo waiting for postgres; sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: api
+          # Build and push the image (backend/Dockerfile) and set a real tag here; "latest" is refused by scripts/check-k8s.py.
+          image: aegis-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: aegis-config}
+          env:
+            # Two connections. The API runs as aegis_app, which owns nothing and cannot bypass row-level security;
+            # the table owner is used only to provision tenants and by the migrate Job (k8s/21-migrate-job.yaml).
+            # Migrations are not run by replicas: apply and wait for that Job before rolling the Deployment.
+            - name: AEGIS_RUN_MIGRATIONS
+              value: "false"
+            - name: AEGIS_ENV
+              value: production
+            # Held outside the database. Required when AEGIS_ENV=production: the ledger is signed with it.
+            - name: AEGIS_LEDGER_SIGNING_KEY
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_LEDGER_SIGNING_KEY}}
+            - name: AEGIS_MODEL_SIGNING_KEY
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_MODEL_SIGNING_KEY, optional: true}}
+            - name: AEGIS_ALERT_WEBHOOK
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_ALERT_WEBHOOK, optional: true}}
+            - name: AEGIS_APP_PASSWORD
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_APP_PASSWORD}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_DB_OWNER_PASSWORD}}
+            - name: AEGIS_DATABASE_URL
+              value: postgresql+psycopg://aegis_app:$(AEGIS_APP_PASSWORD)@postgres:5432/aegis
+            - name: AEGIS_MIGRATION_URL
+              value: postgresql+psycopg://aegis:$(POSTGRES_PASSWORD)@postgres:5432/aegis
+            - name: AEGIS_JWT_SECRET
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_JWT_SECRET}}
+            - name: AEGIS_ANONYMISATION_SALT
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_ANONYMISATION_SALT}}
+            # Optional: a language model and a mail server. Without them Aegis scores deterministically and mails a mock.
+            - name: AEGIS_MODEL_API_KEY
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_MODEL_API_KEY, optional: true}}
+            - name: AEGIS_SMTP_PASSWORD
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_SMTP_PASSWORD, optional: true}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          # Start-up builds the platform (secrets, database role check) before serving: allow up to 3 minutes.
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 500m, memory: 768Mi}
+            limits: {cpu: "2", memory: 1536Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: aegis
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: api}
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: aegis
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: api}

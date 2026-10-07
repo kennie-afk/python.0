@@ -37,7 +37,7 @@ def auth(platform: Platform) -> dict[str, str]:
 
 @pytest.fixture
 def other_auth(platform: Platform) -> dict[str, str]:
-    token = platform.tokens.mint(OTHER_TENANT, "someone@else.com")
+    token = platform.tokens.mint(OTHER_TENANT, "someone@else.com", frozenset({"ADMIN"}))
     return {"Authorization": f"Bearer {token}"}
 
 CONTEXT = {
@@ -449,7 +449,7 @@ class TestRetryingAFailedStep:
         ).json()
         result: dict[str, Any] = client.post(
             f"/v1/runs/{created['run_id']}/steps/shortlist/approve",
-            json={"approver": "recruiter@example.com"},
+            json={},
             headers=auth,
         ).json()
         return result
@@ -475,7 +475,6 @@ class TestRetryingAFailedStep:
         response = client.post(
             f"/v1/runs/{second['run_id']}/steps/schedule/retry",
             json={
-                "actor": "recruiter@example.com",
                 "amendments": {"starts_at": "2099-06-03T11:00:00+00:00"},
             },
             headers=auth,
@@ -496,7 +495,6 @@ class TestRetryingAFailedStep:
         client.post(
             f"/v1/runs/{second['run_id']}/steps/schedule/retry",
             json={
-                "actor": "recruiter@example.com",
                 "amendments": {"starts_at": "2099-06-05T11:00:00+00:00"},
             },
             headers=auth,
@@ -506,7 +504,7 @@ class TestRetryingAFailedStep:
         retried = [e for e in entries if e["outcome"] == "RETRIED"]
 
         assert len(retried) == 1
-        assert retried[0]["approver"] == "recruiter@example.com"
+        assert retried[0]["approver"] == "hr.partner@example.com"
         assert client.get("/v1/ledger/verify", headers=auth).json()["intact"]
 
     def test_retrying_a_step_that_did_not_fail_is_refused(
@@ -524,7 +522,7 @@ class TestRetryingAFailedStep:
 
         response = client.post(
             f"/v1/runs/{created['run_id']}/steps/source/retry",
-            json={"actor": "recruiter@example.com"},
+            json={},
             headers=auth,
         )
 
@@ -540,7 +538,7 @@ class TestRetryingAFailedStep:
 
         response = client.post(
             f"/v1/runs/{second['run_id']}/steps/schedule/retry",
-            json={"actor": "intruder@example.com"},
+            json={},
             headers=other_auth,
         )
 
@@ -692,7 +690,7 @@ class TestDeliveryConfiguration:
 
         assert body["tenant_id"] == TENANT
         assert body["email"] == "MockEmailTransport"
-        assert body["calendar"] == "InMemoryCalendar"
+        assert body["calendar"] == "PersistentCalendar"
 
     def test_the_configuration_endpoint_needs_authentication(self, client: TestClient) -> None:
         assert client.get("/v1/configuration").status_code == 401

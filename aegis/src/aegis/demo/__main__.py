@@ -8,9 +8,10 @@ import uuid
 
 import httpx
 
+from aegis.auth.tokens import generate_api_key, hash_api_key
 from aegis.cli.provision import provision_tenant
-from aegis.demo.seed import DemoSeeder
-from aegis.persistence.repositories import purge_tenant
+from aegis.demo.seed import DEMO_APPROVERS, DemoSeeder
+from aegis.persistence.repositories import ApiKeyRepository, purge_tenant
 from aegis.persistence.session import Database, admin_database_url
 
 DEMO_TENANT = str(uuid.uuid5(uuid.NAMESPACE_URL, "aegis-demo:kijani-logistics"))
@@ -61,6 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     tenant = provision_tenant(
         database, DEMO_NAME, posture="conservative", label="demo", tenant_id=DEMO_TENANT
     )
+    approver_keys: dict[str, str] = {}
+    with database.session() as session:
+        for name in DEMO_APPROVERS:
+            key = generate_api_key()
+            ApiKeyRepository(session).issue(DEMO_TENANT, name, hash_api_key(key), ("APPROVER",))
+            approver_keys[name] = key
     database.dispose()
 
     with httpx.Client(base_url=args.api_url, timeout=60.0) as client:
@@ -73,7 +80,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{DEMO_NAME} is already populated ({already['runs']} runs); not seeding twice.")
             print("Run with --reset to rebuild it.")
         else:
-            summary = DemoSeeder(client).run()
+            approver_tokens = {
+                name: client.post("/v1/auth/token", json={"api_key": key}).json()["token"]
+                for name, key in approver_keys.items()
+            }
+            summary = DemoSeeder(client, approver_tokens=approver_tokens).run()
             print()
             print(f"screened {summary.screened} applicants, {summary.advance} advanced")
             for label, verdict in summary.reports:

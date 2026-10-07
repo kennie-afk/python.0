@@ -13,3 +13,5 @@ build/
 !.env.example
 node_modules/
 .next/
+.cache/
+state/

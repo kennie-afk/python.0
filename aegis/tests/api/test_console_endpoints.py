@@ -95,7 +95,7 @@ class TestLedger:
     def test_search_is_newest_first_filtered_and_counted(self, client: TestClient) -> None:
         run = start(client, "held")
         client.post(
-            f"/v1/runs/{run['run_id']}/steps/shortlist/approve", json={"approver": "Wanjiru"}
+            f"/v1/runs/{run['run_id']}/steps/shortlist/approve", json={}
         )
 
         page = client.get("/v1/ledger/search", params={"limit": 3})
@@ -104,12 +104,21 @@ class TestLedger:
         assert int(page.headers["x-total-count"]) > 3
 
         people = client.get("/v1/ledger/search", params={"actor": "people"}).json()
-        assert people and all(entry["approver"] == "Wanjiru" for entry in people)
+        assert people and all(entry["approver"] == "hr@example.com" for entry in people)
         assert client.get("/v1/ledger/search", params={"actor": "robots"}).status_code == 422
 
-    def test_export_is_csv_with_hashes_and_neutralises_formulas(self, client: TestClient) -> None:
+    def test_export_is_csv_with_hashes_and_neutralises_formulas(
+        self, client: TestClient, platform: Platform
+    ) -> None:
         run = start(client, "=HYPERLINK(\"http://evil\")")
-        client.post(f"/v1/runs/{run['run_id']}/steps/shortlist/approve", json={"approver": "+cmd"})
+        # The approver is the signed-in identity, so a hostile-looking one has to come from the
+        # token itself, which is the only place it can still come from.
+        hostile = platform.tokens.mint(TENANT, "+cmd", frozenset({"ADMIN"}))
+        client.post(
+            f"/v1/runs/{run['run_id']}/steps/shortlist/approve",
+            json={},
+            headers={"Authorization": f"Bearer {hostile}"},
+        )
 
         response = client.get("/v1/ledger/export")
         assert response.status_code == 200

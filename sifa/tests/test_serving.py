@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -164,16 +165,31 @@ def test_a_promotion_moves_a_version_forward(client: TestClient) -> None:
     response = client.post("/v1/registry/promote")
     assert response.status_code == 200
     after = client.get("/v1/registry").json()
-    assert [row["stage"] for row in after] != [row["stage"] for row in before]
+    assert len(after) == len(before) + 1
+    newest = max(after, key=lambda row: row["version"])
+    assert newest["stage"] == "canary"
+    assert 0.0 < newest["traffic"] < 1.0
 
-def test_a_rollback_is_recorded(client: TestClient) -> None:
+def test_a_rollback_withdraws_the_canary_and_leaves_live_alone(client: TestClient) -> None:
+    client.post("/v1/registry/promote")
+    live_before = next(row for row in client.get("/v1/registry").json() if row["stage"] == "live")
+
     response = client.post("/v1/registry/rollback")
-    assert response.status_code in {200, 400}
+
+    assert response.status_code == 200
+    rows = client.get("/v1/registry").json()
+    assert response.json()["now_live"] == live_before["label"]
+    assert not any(row["stage"] == "canary" for row in rows)
+    assert any(row["stage"] == "rolled_back" for row in rows)
 
 def test_drift_is_exposed(client: TestClient) -> None:
-    body = client.get("/v1/drift?live_shift=0").json()
-    assert body
-    assert "psi" in body[0]
+    quiet = client.get("/v1/drift?shift=0").json()
+    shifted = client.get("/v1/drift?shift=2").json()
+
+    assert quiet
+    assert "psi" in quiet[0]
+    assert not any(row["drifted"] for row in quiet)
+    assert any(row["drifted"] for row in shifted)
 
 def test_the_experiment_is_exposed(client: TestClient) -> None:
     body = client.get("/v1/experiment").json()
@@ -184,7 +200,16 @@ def test_a_simulation_can_be_driven(client: TestClient) -> None:
     assert body["requests"] == 40
 
 def test_the_benchmark_reports_recall_and_latency(client: TestClient) -> None:
-    body = client.get("/v1/retrieval/benchmark", params={"corpus": 1200, "k": 10}).json()
+    started = client.post("/v1/retrieval/benchmark", params={"corpus": 1200, "k": 10})
+    assert started.status_code == 202
+    job = started.json()["job_id"]
+    for _ in range(120):
+        polled = client.get(f"/v1/retrieval/benchmark/{job}").json()
+        if polled["status"] != "running":
+            break
+        time.sleep(0.5)
+    assert polled["status"] == "done"
+    body = polled["result"]
     assert body["corpus"] == 1200
     assert body["exhaustive_ms"] > 0.0
     assert [row["ef_search"] for row in body["curve"]] == [32, 64, 128, 256]
@@ -204,3 +229,25 @@ def test_promoting_a_model_needs_an_api_key(client: TestClient) -> None:
 
 def test_health_stays_open_so_orchestrators_can_probe_it(client: TestClient) -> None:
     assert client.get("/healthz", headers={"X-Api-Key": ""}).status_code == 200
+
+def test_the_recorded_movielens_evaluation_is_served_and_self_consistent(
+    client: TestClient,
+) -> None:
+    body = client.get("/v1/evaluation/movielens").json()
+
+    assert body["users"] > 100
+    assert {"random", "popularity", "sifa_two_tower_exact", "sifa_two_tower_hnsw"} <= set(
+        body["test"]
+    )
+    for scores in body["test"].values():
+        keys = ("hit_rate_ci95_low", "hit_rate_at_10", "hit_rate_ci95_high")
+        low, mid, high = (scores[key] for key in keys)
+        assert low <= mid <= high
+        assert 0.0 <= scores["ndcg_at_10"] <= scores["hit_rate_at_10"] + 1e-9
+    assert body["test"]["random"]["hit_rate_at_10"] < body["test"]["popularity"]["hit_rate_at_10"]
+    recalls = [row["sifa_recall_at_10"] for row in body["ann_index"]["sweep"]]
+    assert recalls == sorted(recalls)
+
+def test_the_evaluation_route_needs_the_api_key() -> None:
+    with TestClient(app) as anonymous:
+        assert anonymous.get("/v1/evaluation/movielens").status_code in (401, 403)

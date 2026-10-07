@@ -2,13 +2,30 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import os
+import threading
+import time
 import uuid
-from collections.abc import Iterator, Sequence
+from collections import defaultdict, deque
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from itertools import islice
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,12 +52,18 @@ from aegis.api.schemas import (
     ExternalResultRequest,
     GroupImpactView,
     IntegrityView,
+    IssuedKeyView,
+    KeyCreateRequest,
+    KeyView,
     LedgerEntryView,
+    LedgerHeadView,
     ModelStatusView,
+    ModelVersionView,
     OverviewView,
     RejectionRequest,
     RetryRequest,
     RunView,
+    ScoreHistoryView,
     ScoreRequest,
     ScreeningView,
     ScreenRequest,
@@ -55,9 +78,9 @@ from aegis.api.schemas import (
     WorkflowStepView,
     WorkflowView,
 )
-from aegis.attrition.features import EmployeeSnapshot
+from aegis.attrition.features import FEATURE_NAMES, EmployeeSnapshot
 from aegis.attrition.model import AttritionModel, ModelError
-from aegis.auth.tokens import AuthError, Principal, TokenService, hash_api_key
+from aegis.auth.tokens import AuthError, Principal, TokenService, generate_api_key, hash_api_key
 from aegis.bias.adverse_impact import (
     AdverseImpactError,
     GroupOutcome,
@@ -67,7 +90,7 @@ from aegis.governance.actions import IRREVERSIBLE_ACTIONS, ActionType
 from aegis.governance.gate import GovernanceGate
 from aegis.governance.policy import TenantPolicy
 from aegis.hr.workflows import CATALOGUE
-from aegis.integrations.calendar import CalendarTool, InMemoryCalendar
+from aegis.integrations.calendar import CalendarTool, PersistentCalendar
 from aegis.integrations.email import (
     EmailError,
     EmailTool,
@@ -75,12 +98,22 @@ from aegis.integrations.email import (
     MockEmailTransport,
     SmtpEmailTransport,
 )
-from aegis.ledger.record import DecisionLedger, LedgerEntry, make_entry
-from aegis.persistence.models import ImpactReportRow
+from aegis.ledger.evidence import VERIFIER_SOURCE, build_evidence_pack
+from aegis.ledger.record import (
+    GENESIS,
+    DecisionLedger,
+    LedgerEntry,
+    head_signature,
+    make_entry,
+)
+from aegis.ops.alerts import AlertDispatcher
+from aegis.persistence.models import ImpactReportRow, ModelVersionRow
 from aegis.persistence.repositories import (
+    AlertRepository,
     ApiKeyRepository,
     ImpactReportRepository,
     LedgerRepository,
+    ModelIntegrityError,
     ModelRepository,
     PolicyRepository,
     RiskScoreRepository,
@@ -92,6 +125,13 @@ from aegis.reasoning.deterministic import DeterministicModel
 from aegis.reasoning.http_model import HttpLanguageModel
 from aegis.reasoning.provider import LanguageModel, ReasoningError
 from aegis.reasoning.screening import CandidateScreener
+from aegis.security.signing import (
+    is_production,
+    key_fingerprint,
+    ledger_signing_key,
+)
+from aegis.verification.fidelity import Gate
+from aegis.verification.model_gate import assess_model, feature_drift
 
 logger = logging.getLogger("aegis.platform")
 
@@ -135,15 +175,19 @@ class Platform:
             secret=_required_secret("AEGIS_JWT_SECRET", MIN_SIGNING_SECRET_LENGTH)
         )
         self.model = model or _configured_model()
-        self.calendar = InMemoryCalendar()
+        # Interview slots live in the database (per tenant); this names the implementation.
+        self.calendar = PersistentCalendar
         self.email = _configured_email()
+        # None when signing is off; an error here, at start-up, in production without a key.
+        self.ledger_key = ledger_signing_key()
+        self.alerts = AlertDispatcher.from_environment(self.database, self.email)
 
     @property
     def delivery(self) -> dict[str, str]:
         return {
             "model": self.model.name,
             "email": type(self.email).__name__,
-            "calendar": type(self.calendar).__name__,
+            "calendar": self.calendar.__name__,
         }
 
     def policy(self, session: Session, tenant: str) -> TenantPolicy:
@@ -153,14 +197,14 @@ class Platform:
     def runtime(self, session: Session, tenant: str) -> AgentRuntime:
         tools = ToolRegistry()
         tools.register(EmailTool(self.email))
-        tools.register(CalendarTool(self.calendar))
+        tools.register(CalendarTool(PersistentCalendar(session, tenant)))
         remaining = frozenset(ActionType) - tools.registered()
         tools.register(RecordingTool(remaining, output={"executed": True}))
 
         return AgentRuntime(
             gate=GovernanceGate(self.policy(session, tenant)),
             tools=tools,
-            ledger=PersistentLedger(session, tenant),
+            ledger=PersistentLedger(session, tenant, self.ledger_key),
         )
 
     def anonymizer(self) -> AnonymizationEngine:
@@ -172,8 +216,8 @@ class Platform:
 _LEDGER_APPEND_RETRIES = 5
 
 class PersistentLedger(DecisionLedger):
-    def __init__(self, session: Session, tenant: str) -> None:
-        super().__init__()
+    def __init__(self, session: Session, tenant: str, signing_key: bytes | None = None) -> None:
+        super().__init__(signing_key)
         self._tenant = tenant
         self._session = session
         self._repository = LedgerRepository(session)
@@ -219,6 +263,7 @@ class PersistentLedger(DecisionLedger):
                 outcome=outcome,
                 reasons=reasons,
                 approver=approver,
+                signing_key=self._signing_key,
             )
             try:
                 with self._session.begin_nested():
@@ -235,12 +280,48 @@ class PersistentLedger(DecisionLedger):
         ) from last_error
 
 _platform: Platform | None = None
+_platform_lock = threading.Lock()
 
-def get_platform() -> Iterator[Platform]:
+def build_platform() -> Platform:
+    """Create the process-wide platform once. Two first requests arriving together must not each
+    build one (two connection pools, two sets of secrets read), so creation is under a lock."""
     global _platform
     if _platform is None:
-        _platform = Platform()
-    yield _platform
+        with _platform_lock:
+            if _platform is None:
+                _platform = Platform()
+    return _platform
+
+def get_platform() -> Iterator[Platform]:
+    yield build_platform()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Built at start-up, so a missing secret or an unsafe database role stops the process before it
+    # takes traffic, not on the first request. Overridden platforms (tests) are left alone.
+    if get_platform not in app.dependency_overrides:
+        build_platform()
+    yield
+
+def _check_token_key(platform: Platform, token: Principal) -> None:
+    """A token issued from an API key is only as good as that key: revoking the key, or setting
+    its not_before, ends every token it already issued, without waiting for them to expire."""
+    if token.key_id is None:
+        return
+    with platform.database.session() as session:
+        state = ApiKeyRepository(session).state(token.key_id)
+    revoked = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="token has been revoked"
+    )
+    if state is None:
+        raise revoked
+    tenant, active, not_before = state
+    if tenant != token.tenant_id or not active:
+        raise revoked
+    if not_before is not None and token.issued_at is not None:
+        floor = not_before if not_before.tzinfo else not_before.replace(tzinfo=UTC)
+        if token.issued_at < floor:
+            raise revoked
 
 def principal(
     platform: Annotated[Platform, Depends(get_platform)],
@@ -249,11 +330,13 @@ def principal(
 ) -> Principal:
     if authorization and authorization.startswith("Bearer "):
         try:
-            return platform.tokens.verify(authorization[len("Bearer ") :].strip())
+            token_principal = platform.tokens.verify(authorization[len("Bearer ") :].strip())
         except AuthError as error:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)
             ) from error
+        _check_token_key(platform, token_principal)
+        return token_principal
 
     if x_api_key:
         with platform.database.session() as session:
@@ -281,10 +364,45 @@ def principal(
 PrincipalDep = Annotated[Principal, Depends(principal)]
 PlatformDep = Annotated[Platform, Depends(get_platform)]
 
+# Roles. ADMIN may do everything; a principal with no role may do nothing, so a key issued
+# without one is useless rather than all-powerful. Role names are matched case-insensitively.
+READ_ROLES = frozenset({"VIEWER", "OPERATOR", "APPROVER", "AUDITOR"})
+OPERATE_ROLES = frozenset({"OPERATOR"})
+APPROVE_ROLES = frozenset({"APPROVER"})
+AUDIT_ROLES = frozenset({"AUDITOR", "APPROVER"})
+
+def requires(allowed: frozenset[str]) -> Callable[[Principal], Principal]:
+    def check(caller: PrincipalDep) -> Principal:
+        held = {role.upper() for role in caller.roles}
+        if "ADMIN" in held or held & allowed:
+            return caller
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"this needs one of: {', '.join(sorted({'ADMIN', *allowed}))}",
+        )
+
+    return check
+
+ALL_ROLES = frozenset({"ADMIN", "OPERATOR", "APPROVER", "AUDITOR", "VIEWER"})
+AdminDep = Annotated[Principal, Depends(requires(frozenset()))]
+ReaderDep = Annotated[Principal, Depends(requires(READ_ROLES))]
+OperatorDep = Annotated[Principal, Depends(requires(OPERATE_ROLES))]
+ApproverDep = Annotated[Principal, Depends(requires(APPROVE_ROLES))]
+AuditorDep = Annotated[Principal, Depends(requires(AUDIT_ROLES))]
+
+def _own_identity(caller: Principal, claimed: str | None, what: str) -> str:
+    if claimed is not None and claimed != caller.subject:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"the {what} is the signed-in identity ({caller.subject}); it cannot be set",
+        )
+    return caller.subject
+
 app = FastAPI(
     title="Aegis",
     version="0.1.0",
     description="HR automation platform with structural governance",
+    lifespan=lifespan,
 )
 
 @app.exception_handler(ApprovalError)
@@ -352,26 +470,183 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 @app.get("/v1/configuration")
-def configuration(caller: PrincipalDep, platform: PlatformDep) -> dict[str, str]:
+def configuration(caller: ReaderDep, platform: PlatformDep) -> dict[str, str]:
     return {"tenant_id": caller.tenant_id, **platform.delivery}
 
+class _FailureLimiter:
+    """Sliding window of failed sign-ins per client address. In process memory, so with several
+    replicas each keeps its own count; behind a proxy run uvicorn with --proxy-headers so the
+    address is the caller's and not the proxy's."""
+
+    def __init__(self) -> None:
+        self._failures: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def limit() -> int:
+        return int(os.environ.get("AEGIS_TOKEN_FAILURES_PER_MINUTE", "10"))
+
+    def check(self, client: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            hits = self._failures[client]
+            while hits and now - hits[0] > 60.0:
+                hits.popleft()
+            if len(hits) >= self.limit():
+                retry = max(1, int(60.0 - (now - hits[0])) + 1)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="too many failed sign-in attempts; wait and try again",
+                    headers={"Retry-After": str(retry)},
+                )
+
+    def record_failure(self, client: str) -> None:
+        with self._lock:
+            self._failures[client].append(time.monotonic())
+
+    def reset(self) -> None:
+        with self._lock:
+            self._failures.clear()
+
+token_failures = _FailureLimiter()
+
 @app.post("/v1/auth/token")
-def exchange_key_for_token(request: TokenRequest, platform: PlatformDep) -> TokenResponse:
+def exchange_key_for_token(
+    request: TokenRequest, http: Request, platform: PlatformDep
+) -> TokenResponse:
+    client = http.client.host if http.client else "unknown"
+    token_failures.check(client)
     with platform.database.session() as session:
         row = ApiKeyRepository(session).resolve(hash_api_key(request.api_key))
         if row is None:
+            token_failures.record_failure(client)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="api key is not valid"
             )
-        tenant_id, label, roles = row.tenant_id, row.label, list(row.roles)
+        tenant_id, label, roles, key_id = row.tenant_id, row.label, list(row.roles), row.key_id
 
     try:
         subject = f"key:{label}"
-        token = platform.tokens.mint(tenant_id, subject, frozenset(roles))
+        token = platform.tokens.mint(tenant_id, subject, frozenset(roles), key_id=key_id)
     except AuthError as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error)) from error
 
     return TokenResponse(token=token, tenant_id=tenant_id, subject=subject, roles=roles)
+
+def _key_view(row: Any) -> KeyView:
+    return KeyView(
+        key_id=row.key_id,
+        label=row.label,
+        roles=list(row.roles),
+        active=bool(row.active),
+        created_at=row.created_at.isoformat(),
+        created_by=row.created_by,
+        revoked_at=row.revoked_at.isoformat() if row.revoked_at else None,
+        tokens_valid_from=row.not_before.isoformat() if row.not_before else None,
+    )
+
+def _record_access_event(
+    session: Session, caller: Principal, step: str, action: str, subject: str, outcome: str,
+    platform: Platform, reason: str,
+) -> None:
+    PersistentLedger(session, caller.tenant_id, platform.ledger_key).append(
+        tenant_id=caller.tenant_id, workflow="access", run_id=str(uuid.uuid4()), step=step,
+        action_type=action, subject_id=subject, agent="aegis-access", outcome=outcome,
+        reasons=(reason,), approver=caller.subject,
+    )
+
+def _clean_roles(roles: list[str]) -> list[str]:
+    cleaned = sorted({role.strip().upper() for role in roles if role.strip()})
+    unknown = [role for role in cleaned if role not in ALL_ROLES]
+    if unknown or not cleaned:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"roles must be drawn from {sorted(ALL_ROLES)}; got {unknown or 'none'}",
+        )
+    return cleaned
+
+def _would_remove_last_admin(session: Session, tenant: str, key_id: str) -> bool:
+    keys = ApiKeyRepository(session).list_for_tenant(tenant)
+    others = [
+        k for k in keys
+        if k.key_id != key_id and k.active and "ADMIN" in {r.upper() for r in k.roles}
+    ]
+    target = next((k for k in keys if k.key_id == key_id), None)
+    return bool(
+        target and target.active and "ADMIN" in {r.upper() for r in target.roles} and not others
+    )
+
+@app.post("/v1/keys", status_code=status.HTTP_201_CREATED)
+def create_key(
+    request: KeyCreateRequest, caller: AdminDep, platform: PlatformDep
+) -> IssuedKeyView:
+    roles = _clean_roles(request.roles)
+    secret = generate_api_key()
+    with platform.database.session(caller.tenant_id) as session:
+        row = ApiKeyRepository(session).issue(
+            caller.tenant_id, request.label, hash_api_key(secret), roles, caller.subject
+        )
+        _record_access_event(
+            session, caller, "key_issue", "API_KEY_ISSUED", request.label, "ISSUED", platform,
+            f"key {row.key_id} issued with roles {', '.join(roles)}",
+        )
+        return IssuedKeyView(**_key_view(row).model_dump(), api_key=secret)
+
+@app.get("/v1/keys")
+def list_keys(caller: AdminDep, platform: PlatformDep) -> list[KeyView]:
+    with platform.database.session(caller.tenant_id) as session:
+        rows = ApiKeyRepository(session).list_for_tenant(caller.tenant_id)
+        return [_key_view(row) for row in rows]
+
+@app.post("/v1/keys/{key_id}/rotate", status_code=status.HTTP_201_CREATED)
+def rotate_key(key_id: str, caller: AdminDep, platform: PlatformDep) -> IssuedKeyView:
+    """Issue a replacement with the same label and roles and revoke the old key, whose tokens stop
+    working at once."""
+    secret = generate_api_key()
+    with platform.database.session(caller.tenant_id) as session:
+        repository = ApiKeyRepository(session)
+        old = repository.by_key_id(caller.tenant_id, key_id)
+        if old is None or not old.active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such active key")
+        new = repository.issue(
+            caller.tenant_id, old.label, hash_api_key(secret), list(old.roles), caller.subject
+        )
+        repository.revoke_by_id(caller.tenant_id, key_id)
+        _record_access_event(
+            session, caller, "key_rotate", "API_KEY_ROTATED", old.label, "ROTATED", platform,
+            f"key {key_id} replaced by {new.key_id}",
+        )
+        return IssuedKeyView(**_key_view(new).model_dump(), api_key=secret)
+
+@app.post("/v1/keys/{key_id}/revoke")
+def revoke_key(key_id: str, caller: AdminDep, platform: PlatformDep) -> KeyView:
+    with platform.database.session(caller.tenant_id) as session:
+        if _would_remove_last_admin(session, caller.tenant_id, key_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="that is the last active ADMIN key; create or rotate another first",
+            )
+        row = ApiKeyRepository(session).revoke_by_id(caller.tenant_id, key_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such key")
+        _record_access_event(
+            session, caller, "key_revoke", "API_KEY_REVOKED", row.label, "REVOKED", platform,
+            f"key {key_id} revoked",
+        )
+        return _key_view(row)
+
+@app.post("/v1/keys/{key_id}/revoke-tokens")
+def revoke_key_tokens(key_id: str, caller: AdminDep, platform: PlatformDep) -> KeyView:
+    """End every token already issued from this key, keeping the key itself usable."""
+    with platform.database.session(caller.tenant_id) as session:
+        row = ApiKeyRepository(session).invalidate_tokens(caller.tenant_id, key_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such key")
+        _record_access_event(
+            session, caller, "token_revoke", "API_TOKENS_REVOKED", row.label, "REVOKED", platform,
+            f"tokens issued from key {key_id} before now were revoked",
+        )
+        return _key_view(row)
 
 @app.get("/v1/workflows")
 def list_workflows() -> dict[str, WorkflowView]:
@@ -423,7 +698,7 @@ def _view(run: WorkflowRun, runtime: AgentRuntime) -> RunView:
     )
 
 @app.post("/v1/runs", status_code=status.HTTP_201_CREATED)
-def start_run(request: StartRunRequest, caller: PrincipalDep, platform: PlatformDep) -> RunView:
+def start_run(request: StartRunRequest, caller: OperatorDep, platform: PlatformDep) -> RunView:
     definition = CATALOGUE.get(request.workflow)
     if definition is None:
         raise HTTPException(
@@ -443,7 +718,7 @@ _RUNS_PAGE_MAX = 500
 
 @app.get("/v1/runs")
 def list_runs(
-    caller: PrincipalDep,
+    caller: ReaderDep,
     platform: PlatformDep,
     response: Response,
     limit: int = _RUNS_PAGE_DEFAULT,
@@ -470,7 +745,7 @@ def list_runs(
         return [_view(run, runtime) for run in runs]
 
 @app.get("/v1/runs/{run_id}")
-def get_run(run_id: str, caller: PrincipalDep, platform: PlatformDep) -> RunView:
+def get_run(run_id: str, caller: ReaderDep, platform: PlatformDep) -> RunView:
     with platform.database.session(caller.tenant_id) as session:
         run = RunRepository(session).load(caller.tenant_id, run_id)
         if run is None:
@@ -496,11 +771,16 @@ def approve_step(
     run_id: str,
     step_key: str,
     request: ApprovalRequest,
-    caller: PrincipalDep,
+    caller: ApproverDep,
     platform: PlatformDep,
 ) -> RunView:
     return _mutate_run(
-        platform, caller, run_id, "approve", step_key=step_key, approver=request.approver
+        platform,
+        caller,
+        run_id,
+        "approve",
+        step_key=step_key,
+        approver=_own_identity(caller, request.approver, "approver"),
     )
 
 @app.post("/v1/runs/{run_id}/steps/{step_key}/reject")
@@ -508,7 +788,7 @@ def reject_step(
     run_id: str,
     step_key: str,
     request: RejectionRequest,
-    caller: PrincipalDep,
+    caller: ApproverDep,
     platform: PlatformDep,
 ) -> RunView:
     return _mutate_run(
@@ -517,7 +797,7 @@ def reject_step(
         run_id,
         "reject",
         step_key=step_key,
-        approver=request.approver,
+        approver=_own_identity(caller, request.approver, "approver"),
         reason=request.reason,
     )
 
@@ -526,7 +806,7 @@ def retry_step(
     run_id: str,
     step_key: str,
     request: RetryRequest,
-    caller: PrincipalDep,
+    caller: OperatorDep,
     platform: PlatformDep,
 ) -> RunView:
     return _mutate_run(
@@ -535,7 +815,7 @@ def retry_step(
         run_id,
         "retry",
         step_key=step_key,
-        actor=request.actor,
+        actor=_own_identity(caller, request.actor, "actor"),
         amendments=request.amendments,
     )
 
@@ -544,7 +824,7 @@ def resolve_external(
     run_id: str,
     step_key: str,
     request: ExternalResultRequest,
-    caller: PrincipalDep,
+    caller: OperatorDep,
     platform: PlatformDep,
 ) -> RunView:
     return _mutate_run(
@@ -559,7 +839,7 @@ def resolve_external(
 
 @app.post("/v1/anonymize")
 def anonymize(
-    request: AnonymizeRequest, caller: PrincipalDep, platform: PlatformDep
+    request: AnonymizeRequest, caller: OperatorDep, platform: PlatformDep
 ) -> AnonymizeResponse:
     try:
         result = platform.anonymizer().anonymize(request.record)
@@ -579,7 +859,7 @@ def anonymize(
 
 @app.post("/v1/screen")
 def screen_candidate(
-    request: ScreenRequest, caller: PrincipalDep, platform: PlatformDep
+    request: ScreenRequest, caller: OperatorDep, platform: PlatformDep
 ) -> ScreeningView:
     try:
         result = platform.screener().screen(request.record, request.requirement)
@@ -614,7 +894,7 @@ def screen_candidate(
 
 @app.get("/v1/screenings")
 def list_screenings(
-    caller: PrincipalDep,
+    caller: ReaderDep,
     platform: PlatformDep,
     response: Response,
     recommendation: str | None = Query(default=None, pattern="^(ADVANCE|REVIEW|HOLD)$"),
@@ -666,7 +946,7 @@ def _impact_view(row: ImpactReportRow) -> AdverseImpactResponse:
 
 @app.post("/v1/bias/adverse-impact")
 def adverse_impact(
-    request: AdverseImpactRequest, caller: PrincipalDep, platform: PlatformDep
+    request: AdverseImpactRequest, caller: OperatorDep, platform: PlatformDep
 ) -> AdverseImpactResponse:
     report = four_fifths_test(
         [
@@ -692,7 +972,7 @@ def adverse_impact(
     # a flagged analysis cannot later be quietly deleted without breaking the audit trail.
     with platform.database.session(caller.tenant_id) as session:
         verdict = str(report.verdict)
-        ledger = PersistentLedger(session, caller.tenant_id)
+        ledger = PersistentLedger(session, caller.tenant_id, platform.ledger_key)
         entry = ledger.append(
             tenant_id=caller.tenant_id,
             workflow="compliance",
@@ -723,7 +1003,7 @@ def adverse_impact(
 
 @app.get("/v1/bias/reports")
 def list_impact_reports(
-    caller: PrincipalDep,
+    caller: ReaderDep,
     platform: PlatformDep,
     response: Response,
     verdict: str | None = Query(
@@ -741,7 +1021,7 @@ def list_impact_reports(
 
 @app.get("/v1/bias/reports/{report_id}")
 def get_impact_report(
-    report_id: int, caller: PrincipalDep, platform: PlatformDep
+    report_id: int, caller: ReaderDep, platform: PlatformDep
 ) -> AdverseImpactResponse:
     with platform.database.session(caller.tenant_id) as session:
         row = ImpactReportRepository(session).get(caller.tenant_id, report_id)
@@ -765,22 +1045,123 @@ def _snapshot(employee: EmployeeIn) -> EmployeeSnapshot:
         internal_applications_12m=employee.internal_applications_12m,
     )
 
-@app.post("/v1/attrition/train")
+_GATE_OUTCOME = {"PASS": "PASSED", "WARN": "WARNED", "BLOCK": "BLOCKED"}
+
+def _model_ledger(
+    session: Session, platform: Platform, caller: Principal, step: str, action: str,
+    subject: str, outcome: str, reasons: Sequence[str], human: bool = False,
+) -> LedgerEntry:
+    return PersistentLedger(session, caller.tenant_id, platform.ledger_key).append(
+        tenant_id=caller.tenant_id, workflow="model_governance", run_id=str(uuid.uuid4()),
+        step=step, action_type=action, subject_id=subject, agent="aegis-governance",
+        outcome=outcome, reasons=tuple(reasons), approver=caller.subject if human else None,
+    )
+
+def _version_view(row: ModelVersionRow) -> ModelVersionView:
+    return ModelVersionView(
+        version=row.version,
+        algorithm=row.algorithm,
+        rows=row.rows,
+        positives=row.positives,
+        data_hash=row.data_hash,
+        gate=row.gate,
+        active=bool(row.active),
+        created_by=row.created_by,
+        created_at=row.created_at.isoformat(),
+        activated_at=row.activated_at.isoformat() if row.activated_at else None,
+        feature_importance=dict(row.feature_importance or {}),
+        fidelity=dict(row.fidelity or {}),
+    )
+
+def _deliver_alerts(platform: Platform, tenant: str) -> None:
+    try:
+        platform.alerts.deliver_pending(tenant)
+    except Exception:  # delivery is best effort here; the scheduled checks retry
+        logger.exception("alert delivery failed")
+
+@app.post("/v1/attrition/train", response_model=TrainResponse)
 def train_model(
-    request: TrainRequest, caller: PrincipalDep, platform: PlatformDep
-) -> TrainResponse:
+    request: TrainRequest,
+    caller: OperatorDep,
+    platform: PlatformDep,
+    background: BackgroundTasks,
+) -> TrainResponse | JSONResponse:
+    """Train, then put the model through the governance gate before it can serve.
+
+    The result is stored either way as a new version, so the record shows what was refused. PASS
+    and WARN activate it (WARN is flagged in the response and the audit trail); BLOCK stores it
+    inactive and answers 409 with the reasons."""
     if len(request.employees) != len(request.left):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="employees and outcomes must be the same length",
         )
+    if request.groups is not None and len(request.groups) != len(request.employees):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="groups, when given, must have one label per employee",
+        )
 
+    snapshots = [_snapshot(item) for item in request.employees]
     model = AttritionModel(request.algorithm)
-    report = model.train([_snapshot(item) for item in request.employees], request.left)
+    report = model.train(snapshots, request.left)
 
     with platform.database.session(caller.tenant_id) as session:
-        ModelRepository(session).save(
-            caller.tenant_id, model, report.rows, report.positives, report.feature_importance
+        models = ModelRepository(session)
+        previous: AttritionModel | None = None
+        previous_version: int | None = None
+        current = models.active(caller.tenant_id)
+        extra_notes: list[str] = []
+        if current is not None:
+            try:
+                previous = models.load(caller.tenant_id)
+                previous_version = current.version
+            except ModelIntegrityError as error:
+                extra_notes.append(f"the active version could not be used as a reference: {error}")
+
+        fidelity = assess_model(
+            model, snapshots, request.left, previous, previous_version,
+            request.groups, request.minimum_group_size,
+        )
+        verdict = fidelity.to_dict()
+        verdict["notes"] = [*verdict["notes"], *extra_notes]
+        gate = str(fidelity.gate)
+        row = models.add_version(
+            caller.tenant_id, model, report.rows, report.positives, report.feature_importance,
+            gate, verdict, caller.subject, activate=fidelity.gate is not Gate.BLOCK,
+        )
+        findings = list(fidelity.report.findings)
+        _model_ledger(
+            session, platform, caller, "train", "MODEL_TRAINED", f"attrition:v{row.version}",
+            _GATE_OUTCOME[gate],
+            [f"gate {gate} at {fidelity.report.score:.2f}", *findings[:5]],
+        )
+        if gate != "PASS":
+            AlertRepository(session).add(
+                caller.tenant_id,
+                "model_blocked" if gate == "BLOCK" else "model_warned",
+                f"attrition model v{row.version} was {_GATE_OUTCOME[gate].lower()} by the "
+                f"governance gate: " + ("; ".join(findings) or "see the fidelity report"),
+                {"version": row.version, "gate": gate, "findings": findings},
+            )
+        view = _version_view(row)
+
+    if gate != "PASS":
+        background.add_task(_deliver_alerts, platform, caller.tenant_id)
+
+    if gate == "BLOCK":
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "title": "model-blocked",
+                "detail": "the governance gate blocked this model; it was stored but not activated",
+                "status": 409,
+                "code": "model-blocked",
+                "version": view.version,
+                "gate": gate,
+                "reasons": findings or ["fidelity score below the block threshold"],
+                "fidelity": view.fidelity,
+            },
         )
 
     return TrainResponse(
@@ -789,12 +1170,17 @@ def train_model(
         positive_rate=report.positive_rate,
         algorithm=report.algorithm,
         feature_importance=dict(report.feature_importance),
+        version=view.version,
+        gate=gate,
+        active=view.active,
+        findings=findings,
+        fidelity=view.fidelity,
     )
 
 @app.get("/v1/attrition/model")
-def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView:
+def model_status(caller: ReaderDep, platform: PlatformDep) -> ModelStatusView:
     with platform.database.session(caller.tenant_id) as session:
-        row = ModelRepository(session).describe(caller.tenant_id)
+        row = ModelRepository(session).active(caller.tenant_id)
         if row is None:
             return ModelStatusView(trained=False)
         return ModelStatusView(
@@ -802,24 +1188,101 @@ def model_status(caller: PrincipalDep, platform: PlatformDep) -> ModelStatusView
             algorithm=row.algorithm,
             rows=row.rows,
             positives=row.positives,
-            trained_at=row.trained_at.isoformat(),
-            feature_importance=dict(row.feature_importance),
+            trained_at=row.created_at.isoformat(),
+            feature_importance=dict(row.feature_importance or {}),
+            version=row.version,
+            gate=row.gate,
+            data_hash=row.data_hash,
+            created_by=row.created_by,
+            findings=list((row.fidelity or {}).get("findings", [])),
         )
+
+@app.get("/v1/attrition/models")
+def list_models(caller: ReaderDep, platform: PlatformDep) -> list[ModelVersionView]:
+    """Every version trained for this tenant, newest first, with its gate verdict."""
+    with platform.database.session(caller.tenant_id) as session:
+        return [_version_view(row) for row in ModelRepository(session).versions(caller.tenant_id)]
+
+@app.post("/v1/attrition/models/{version}/activate")
+def activate_model(version: int, caller: ApproverDep, platform: PlatformDep) -> ModelVersionView:
+    """Make a stored version the one that serves. A person does this, and it is on the ledger.
+    A BLOCKed version cannot be activated, and neither can one whose signature fails."""
+    with platform.database.session(caller.tenant_id) as session:
+        models = ModelRepository(session)
+        target = models.get(caller.tenant_id, version)
+        if target is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such version")
+        try:
+            row = models.activate(caller.tenant_id, version)
+        except ModelIntegrityError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except ModelError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        _model_ledger(
+            session, platform, caller, "activate", "MODEL_ACTIVATED", f"attrition:v{version}",
+            "ACTIVATED", [f"{caller.subject} activated v{version} (gate {row.gate})"], human=True,
+        )
+        return _version_view(row)
+
+@app.post("/v1/attrition/models/rollback")
+def rollback_model(caller: ApproverDep, platform: PlatformDep) -> ModelVersionView:
+    """Re-activate the newest older version that passed its gate."""
+    with platform.database.session(caller.tenant_id) as session:
+        models = ModelRepository(session)
+        current = models.active(caller.tenant_id)
+        previous = models.previous_eligible(caller.tenant_id)
+        if previous is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="there is no earlier version that is allowed to serve",
+            )
+        row = models.activate(caller.tenant_id, previous.version)
+        _model_ledger(
+            session, platform, caller, "rollback", "MODEL_ROLLED_BACK", f"attrition:v{row.version}",
+            "ROLLED_BACK",
+            [f"{caller.subject} rolled back from v{current.version if current else '-'} "
+             f"to v{row.version}"],
+            human=True,
+        )
+        return _version_view(row)
 
 @app.post("/v1/attrition/score")
 def score_employees(
-    request: ScoreRequest, caller: PrincipalDep, platform: PlatformDep
+    request: ScoreRequest, caller: OperatorDep, platform: PlatformDep, response: Response
 ) -> list[AttritionScoreView]:
     with platform.database.session(caller.tenant_id) as session:
-        model = ModelRepository(session).load(caller.tenant_id)
+        models = ModelRepository(session)
+        active = models.active(caller.tenant_id)
+        try:
+            model = models.load(caller.tenant_id)
+        except ModelIntegrityError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        version = active.version if active else None
+        gate = active.gate if active else None
 
-    if model is None:
+    if model is None or active is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="no attrition model has been trained for this tenant",
         )
+    if gate == "BLOCK":
+        # An active BLOCK version should be impossible; refusing here is the last line.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"model v{version} was blocked by the governance gate and cannot score",
+        )
 
-    scores = model.score_all([_snapshot(item) for item in request.employees])
+    snapshots = [_snapshot(item) for item in request.employees]
+    scores = model.score_all(snapshots)
+    matrix = model.features_matrix(snapshots)
+    response.headers["X-Aegis-Model-Version"] = str(version)
+    response.headers["X-Aegis-Gate"] = str(gate)
+    # PSI on a handful of rows is mostly noise, so a batch is only judged from 200 rows up.
+    batch_drift = feature_drift(model.reference, matrix) if len(matrix) >= 200 else ()
+    significant = [d.feature for d in batch_drift if d.severity.value == "SIGNIFICANT"]
+    if significant:
+        response.headers["X-Aegis-Drift"] = "SIGNIFICANT: " + ",".join(significant)
+
     views = [
         AttritionScoreView(
             subject_key=score.subject_key,
@@ -840,7 +1303,7 @@ def score_employees(
 
     with platform.database.session(caller.tenant_id) as session:
         risks = RiskScoreRepository(session)
-        for view in views:
+        for view, row in zip(views, matrix, strict=True):
             risks.upsert(
                 caller.tenant_id,
                 view.subject_key,
@@ -848,12 +1311,44 @@ def score_employees(
                 view.band,
                 view.needs_intervention,
                 [driver.model_dump() for driver in view.drivers],
+                model_version=version,
+                features={
+                    name: float(value) for name, value in zip(FEATURE_NAMES, row, strict=True)
+                },
             )
     return views
 
+@app.get("/v1/attrition/scores/{subject_key}/history")
+def score_history(
+    subject_key: str,
+    caller: ReaderDep,
+    platform: PlatformDep,
+    response: Response,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> list[ScoreHistoryView]:
+    """Every score this employee has had, newest first, with the model version that gave it."""
+    with platform.database.session(caller.tenant_id) as session:
+        rows, total = RiskScoreRepository(session).history(
+            caller.tenant_id, subject_key, limit=limit, offset=offset
+        )
+        response.headers["X-Total-Count"] = str(total)
+        return [
+            ScoreHistoryView(
+                subject_key=row.subject_key,
+                probability=row.probability,
+                band=row.band,
+                needs_intervention=row.needs_intervention,
+                model_version=row.model_version,
+                drivers=[DriverView(**driver) for driver in row.drivers],
+                scored_at=row.scored_at.isoformat(),
+            )
+            for row in rows
+        ]
+
 @app.get("/v1/attrition/scores")
 def list_scores(
-    caller: PrincipalDep,
+    caller: ReaderDep,
     platform: PlatformDep,
     response: Response,
     band: str | None = Query(default=None, pattern="^(LOW|MEDIUM|HIGH)$"),
@@ -878,12 +1373,14 @@ def list_scores(
             for row in rows
         ]
 
+# An evidence pack is built in memory; past this, ask for a date range instead.
+MAX_EVIDENCE = 200_000
 _LEDGER_PAGE_DEFAULT = 200
 _LEDGER_PAGE_MAX = 1000
 
 @app.get("/v1/ledger")
 def read_ledger(
-    caller: PrincipalDep,
+    caller: AuditorDep,
     platform: PlatformDep,
     after: int | None = None,
     limit: int = _LEDGER_PAGE_DEFAULT,
@@ -910,16 +1407,99 @@ def read_ledger(
     ]
 
 @app.get("/v1/ledger/verify")
-def verify_ledger(caller: PrincipalDep, platform: PlatformDep) -> IntegrityView:
+def verify_ledger(caller: AuditorDep, platform: PlatformDep) -> IntegrityView:
     with platform.database.session(caller.tenant_id) as session:
-        report = LedgerRepository(session).verify(caller.tenant_id)
+        report = LedgerRepository(session).verify(
+            caller.tenant_id, platform.ledger_key, require_signed=is_production()
+        )
 
     return IntegrityView(
         intact=report.intact,
         entries_checked=report.entries_checked,
         broken_at=report.broken_at,
         reason=report.reason,
+        signed=report.signed,
+        unsigned=report.unsigned,
+        signatures_checked=report.signatures_checked,
     )
+
+@app.get("/v1/ledger/head")
+def ledger_head(caller: AuditorDep, platform: PlatformDep) -> LedgerHeadView:
+    """Where the chain ends, attested with the signing key. Record this somewhere the database's
+    administrators cannot write (a ticket, an email, an append-only bucket): later evidence is
+    then checkable against it, which catches a chain that was truncated or rebuilt."""
+    with platform.database.session(caller.tenant_id) as session:
+        last = LedgerRepository(session).last(caller.tenant_id)
+        total = LedgerRepository(session).counts(caller.tenant_id)["total"]
+    key = platform.ledger_key
+    head_sequence = last.sequence if last else -1
+    head_hash = last.entry_hash if last else GENESIS
+    return LedgerHeadView(
+        tenant_id=caller.tenant_id,
+        sequence=last.sequence if last else None,
+        entry_hash=head_hash,
+        entries=total,
+        signed=key is not None,
+        signature=head_signature(key, caller.tenant_id, head_sequence, head_hash) if key else None,
+        key_fingerprint=key_fingerprint(key) if key else None,
+        generated_at=datetime.now(UTC).isoformat(),
+    )
+
+def _parse_when(value: str | None, name: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{name} must be an ISO 8601 date or time",
+        ) from error
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+@app.get("/v1/ledger/evidence")
+def ledger_evidence(
+    caller: AuditorDep,
+    platform: PlatformDep,
+    format: str = Query(default="json", pattern="^(json|ndjson)$"),
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+) -> Response:
+    """A signed evidence pack: a manifest (head hash, count, date range, signature) and every entry
+    with its hashes and signature, checkable offline with `scripts/verify_evidence.py` (served at
+    /v1/ledger/evidence/verifier) and the signing key, without trusting this service or its
+    database. `from` and `to` bound recorded_at."""
+    start, end = _parse_when(from_, "from"), _parse_when(to, "to")
+    with platform.database.session(caller.tenant_id) as session:
+        repository = LedgerRepository(session)
+        entries = list(islice(repository.in_range(caller.tenant_id, start, end), MAX_EVIDENCE + 1))
+        head = repository.last(caller.tenant_id)
+    if len(entries) > MAX_EVIDENCE:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"more than {MAX_EVIDENCE} entries match; narrow the range with from and to",
+        )
+    pack = build_evidence_pack(
+        caller.tenant_id, entries, head, platform.ledger_key, start, end
+    )
+    if format == "ndjson":
+        header = {"manifest": pack["manifest"], "manifest_signature": pack["manifest_signature"]}
+        lines = [json.dumps(header, sort_keys=True)]
+        lines.extend(json.dumps(entry, sort_keys=True) for entry in pack["entries"])
+        return Response(
+            "\n".join(lines) + "\n",
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": 'attachment; filename="aegis-evidence.ndjson"'},
+        )
+    return JSONResponse(
+        pack,
+        headers={"Content-Disposition": 'attachment; filename="aegis-evidence.json"'},
+    )
+
+@app.get("/v1/ledger/evidence/verifier")
+def evidence_verifier(caller: AuditorDep) -> Response:
+    """The stand-alone verification script, standard library only."""
+    return Response(VERIFIER_SOURCE, media_type="text/x-python")
 
 
 def _ledger_view(entry: LedgerEntry) -> LedgerEntryView:
@@ -937,7 +1517,7 @@ def _ledger_view(entry: LedgerEntry) -> LedgerEntryView:
 
 @app.get("/v1/ledger/search")
 def search_ledger(
-    caller: PrincipalDep,
+    caller: AuditorDep,
     platform: PlatformDep,
     response: Response,
     outcome: str | None = Query(default=None, max_length=40),
@@ -981,7 +1561,7 @@ def _spreadsheet_safe(value: str) -> str:
     return "'" + value if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
 
 @app.get("/v1/ledger/export")
-def export_ledger(caller: PrincipalDep, platform: PlatformDep) -> StreamingResponse:
+def export_ledger(caller: AuditorDep, platform: PlatformDep) -> StreamingResponse:
     """The whole audit trail as CSV, including each entry's hashes so it can be re-verified
     offline by someone who does not trust this service."""
 
@@ -1019,7 +1599,7 @@ def export_ledger(caller: PrincipalDep, platform: PlatformDep) -> StreamingRespo
     )
 
 @app.get("/v1/overview")
-def overview(caller: PrincipalDep, platform: PlatformDep) -> OverviewView:
+def overview(caller: ReaderDep, platform: PlatformDep) -> OverviewView:
     """Counts for the console's front page, computed in the database rather than by fetching
     every run and ledger entry and counting them in the browser."""
     with platform.database.session(caller.tenant_id) as session:
@@ -1037,3 +1617,6 @@ def overview(caller: PrincipalDep, platform: PlatformDep) -> OverviewView:
             retention_bands=RiskScoreRepository(session).by_band(caller.tenant_id),
             model_trained=ModelRepository(session).describe(caller.tenant_id) is not None,
         )
+
+# Routes that live in their own module register themselves on `app` when imported.
+from aegis.api import analytics  # noqa: E402,F401

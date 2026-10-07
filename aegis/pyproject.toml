@@ -36,6 +36,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "scipy-stubs>=1.14",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -53,7 +54,7 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
-extend-exclude = ["migrations/versions"]
+extend-exclude = ["migrations/versions", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]

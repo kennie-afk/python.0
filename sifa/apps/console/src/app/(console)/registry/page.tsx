@@ -1,14 +1,18 @@
 import { api, describeError } from "@/lib/api";
 import type { RegistryEntry } from "@/lib/types";
 import { RegistryActions } from "@/components/registry-actions";
-import { Badge, Card, Notice, PageHeader, Table } from "@/components/ui";
+import { Badge, Card, KeyValue, Notice, PageHeader, Table } from "@/components/ui";
 
 export default async function RegistryPage() {
   let entries: RegistryEntry[] = [];
   let error: string | null = null;
 
   try {
-    entries = await api.get<RegistryEntry[]>("/v1/registry");
+    const summary = await api.get<RegistryEntry[]>("/v1/registry");
+    // The list leaves the model card out; read each version for it.
+    entries = await Promise.all(
+      summary.map((entry) => api.get<RegistryEntry>(`/v1/registry/${entry.version}`))
+    );
   } catch (caught) {
     error = describeError(caught);
   }
@@ -66,12 +70,30 @@ export default async function RegistryPage() {
                     <Badge value={entry.stage} />
                     <span className="text-xs font-normal text-[var(--color-faint)]">{entry.history.length} events</span>
                   </summary>
+                  {entry.card ? (
+                    <div className="mt-3">
+                      <KeyValue
+                        items={[
+                          ["Data fingerprint", entry.card.data_fingerprint.slice(0, 16)],
+                          ["Feature schema", entry.card.feature_schema_hash.slice(0, 16)],
+                          ["Seeds", Object.entries(entry.card.seeds).map(([k, v]) => `${k} ${v}`).join(", ")],
+                          ["Trained on", `${entry.card.training_rows.toLocaleString()} rows, ${entry.card.positives.toLocaleString()} positive`],
+                          ["Trained", `${new Date(entry.card.trained_at).toLocaleString()} in ${entry.card.training_seconds}s`],
+                          ["Libraries", Object.entries(entry.card.libraries).map(([k, v]) => `${k} ${v}`).join(", ")],
+                          ["Git commit", entry.card.git_sha ? entry.card.git_sha.slice(0, 12) : "not available"],
+                          ["Artifact", entry.card.artifact ? `${entry.card.artifact.file}, sha256 ${entry.card.artifact.sha256.slice(0, 12)}` : "memory only"],
+                          ...(entry.card.note ? ([["Note", entry.card.note]] as [string, string][]) : [])
+                        ]}
+                      />
+                    </div>
+                  ) : null}
                   <ol className="relative mt-3 space-y-4 border-l border-[var(--color-line)] pl-6">
                     {entry.history.map((event, index) => (
                       <li key={`${event.at}-${index}`} className="relative">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge value={event.stage} />
                           <span className="text-xs text-[var(--color-faint)]">{new Date(event.at).toLocaleString()}</span>
+                          <span className="font-mono text-xs text-[var(--color-faint)]">{event.actor}</span>
                         </div>
                         {event.reason ? <p className="mt-1 text-sm text-[var(--color-muted)]">{event.reason}</p> : null}
                       </li>

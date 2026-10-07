@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { promoteCandidate, rollbackServing } from "@/lib/actions";
+import { advanceCanary, promoteCandidate, rollbackServing } from "@/lib/actions";
 import { Notice, buttonClass, dangerButtonClass } from "@/components/ui";
 
 export function RegistryActions() {
@@ -31,6 +31,14 @@ export function RegistryActions() {
         <button
           type="button"
           disabled={pending}
+          onClick={() => run(advanceCanary)}
+          className={buttonClass}
+        >
+          Advance the canary to live
+        </button>
+        <button
+          type="button"
+          disabled={pending}
           onClick={() => run(rollbackServing)}
           className={dangerButtonClass}
         >
@@ -40,7 +48,7 @@ export function RegistryActions() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {message ? <Notice tone="good">{message}</Notice> : null}
       <p className="text-xs leading-relaxed text-[var(--color-faint)]">
-        A promotion enters shadow, then canary at ten percent of traffic. A rollback withdraws
+        A promotion trains a new ranker and puts it on a canary for ten percent of users, chosen by hashing the user so each person keeps one model. The rollout guard watches the canary and withdraws it on its own if click through, calibration or latency slip; it can advance to live only once the guard has seen enough traffic and finds it healthy. A rollback withdraws
         the canary if there is one, leaving the live model untouched; with no canary it withdraws the live
         model and restores the previous archived version in the same step.
       </p>

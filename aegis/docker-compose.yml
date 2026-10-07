@@ -11,17 +11,44 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
+  # Runs `alembic upgrade head` once and exits. The API (and the checks job) wait for it to finish
+  # successfully, so replicas never migrate on start.
+  migrate:
+    build: .
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      AEGIS_RUN_MIGRATIONS: "false"
+      AEGIS_MIGRATION_URL: postgresql+psycopg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}
+      AEGIS_APP_PASSWORD: ${AEGIS_APP_PASSWORD}
+      # Needed to sign the models converted from the old pickle format (only on the first upgrade).
+      AEGIS_JWT_SECRET: ${AEGIS_JWT_SECRET:?AEGIS_JWT_SECRET must be set and at least 32 characters}
+      AEGIS_MODEL_SIGNING_KEY: ${AEGIS_MODEL_SIGNING_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: .
     restart: unless-stopped
     environment:
+      AEGIS_RUN_MIGRATIONS: "false"
+      # Keys held outside the database. In production (AEGIS_ENV=production) the ledger key is required:
+      # without it the audit trail is tamper-evident only against partial edits.
+      AEGIS_ENV: ${AEGIS_ENV:-}
+      AEGIS_LEDGER_SIGNING_KEY: ${AEGIS_LEDGER_SIGNING_KEY:-}
+      AEGIS_MODEL_SIGNING_KEY: ${AEGIS_MODEL_SIGNING_KEY:-}
+      AEGIS_ALERT_WEBHOOK: ${AEGIS_ALERT_WEBHOOK:-}
+      AEGIS_ALERT_WEBHOOK_SECRET: ${AEGIS_ALERT_WEBHOOK_SECRET:-}
+      AEGIS_ALERT_EMAIL_TO: ${AEGIS_ALERT_EMAIL_TO:-}
+      AEGIS_TOKEN_FAILURES_PER_MINUTE: ${AEGIS_TOKEN_FAILURES_PER_MINUTE:-10}
       # Two roles. The API runs as aegis_app, which owns nothing and cannot bypass row-level security,
       # so the database itself keeps tenants apart. The owner is used only to migrate (and to provision
       # a tenant), and the API refuses to start if it is connected as a superuser.
@@ -44,6 +71,36 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Scheduled checks and alert delivery: ledger integrity, drift of recently scored inputs against the
+  # active model's reference, retrain due. Off the API so replicas stay stateless. Run once with
+  # `docker compose run --rm checks python -m aegis.ops --once`.
+  checks:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "aegis.ops"]
+    environment:
+      AEGIS_RUN_MIGRATIONS: "false"
+      AEGIS_DATABASE_URL: postgresql+psycopg://aegis_app:${AEGIS_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}
+      # The owner connection is used only to list tenant ids; the checks themselves run as aegis_app.
+      AEGIS_ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis}
+      AEGIS_JWT_SECRET: ${AEGIS_JWT_SECRET}
+      AEGIS_MODEL_SIGNING_KEY: ${AEGIS_MODEL_SIGNING_KEY:-}
+      AEGIS_ENV: ${AEGIS_ENV:-}
+      AEGIS_LEDGER_SIGNING_KEY: ${AEGIS_LEDGER_SIGNING_KEY:-}
+      AEGIS_CHECK_INTERVAL_SECONDS: ${AEGIS_CHECK_INTERVAL_SECONDS:-900}
+      AEGIS_ALERT_WEBHOOK: ${AEGIS_ALERT_WEBHOOK:-}
+      AEGIS_ALERT_WEBHOOK_SECRET: ${AEGIS_ALERT_WEBHOOK_SECRET:-}
+      AEGIS_ALERT_EMAIL_TO: ${AEGIS_ALERT_EMAIL_TO:-}
+      AEGIS_SMTP_HOST: ${AEGIS_SMTP_HOST:-}
+      AEGIS_SMTP_PORT: ${AEGIS_SMTP_PORT:-587}
+      AEGIS_SMTP_USERNAME: ${AEGIS_SMTP_USERNAME:-}
+      AEGIS_SMTP_PASSWORD: ${AEGIS_SMTP_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   console:
     build: ./apps/console

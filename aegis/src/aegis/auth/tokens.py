@@ -20,6 +20,10 @@ class Principal:
     tenant_id: str
     subject: str
     roles: frozenset[str]
+    # The key the token was issued from and when it was issued, so the API can check the key still
+    # stands (see api_keys.active / not_before). None for a token not issued from a key.
+    key_id: str | None = None
+    issued_at: datetime | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -53,16 +57,26 @@ class TokenService:
         self._audience = audience
         self._ttl = timedelta(minutes=ttl_minutes)
 
-    def mint(self, tenant_id: str, subject: str, roles: frozenset[str] = frozenset()) -> str:
+    def mint(
+        self,
+        tenant_id: str,
+        subject: str,
+        roles: frozenset[str] = frozenset(),
+        key_id: str | None = None,
+    ) -> str:
         now = datetime.now(UTC)
+        extra: dict[str, object] = {"kid": key_id} if key_id else {}
         return jwt.encode(
             {
+                **extra,
+                "jti": secrets.token_hex(8),
                 "iss": self._issuer,
                 "aud": self._audience,
                 "sub": subject,
                 "tid": tenant_id,
                 "roles": sorted(roles),
                 "iat": int(now.timestamp()),
+                "iat_ms": int(now.timestamp() * 1000),
                 "exp": int((now + self._ttl).timestamp()),
             },
             self._secret,
@@ -92,6 +106,10 @@ class TokenService:
             tenant_id=str(tenant),
             subject=str(claims["sub"]),
             roles=frozenset(str(role) for role in claims.get("roles", [])),
+            key_id=str(claims["kid"]) if claims.get("kid") else None,
+            issued_at=datetime.fromtimestamp(
+                int(claims.get("iat_ms", int(claims["iat"]) * 1000)) / 1000, UTC
+            ),
         )
 
 def generate_api_key() -> str:

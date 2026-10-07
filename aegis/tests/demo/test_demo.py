@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from aegis.api.app import Platform, app, get_platform
 from aegis.bias.adverse_impact import GroupOutcome, ImpactVerdict, four_fifths_test
 from aegis.demo.data import age_band, build_candidates, build_cohort, simulate_screening
-from aegis.demo.seed import DemoSeeder
+from aegis.demo.seed import DEMO_APPROVERS, DemoSeeder
 from aegis.persistence import Database, purge_tenant
 from aegis.persistence.repositories import LedgerRepository
 
@@ -69,8 +69,11 @@ def seeded() -> Iterator[tuple[TestClient, Platform]]:
     platform = Platform(database=database)
     app.dependency_overrides[get_platform] = lambda: platform
     token = platform.tokens.mint(TENANT, "demo", frozenset({"ADMIN"}))
+    approvers = {
+        name: platform.tokens.mint(TENANT, name, frozenset({"APPROVER"})) for name in DEMO_APPROVERS
+    }
     with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as client:
-        DemoSeeder(client, say=lambda _: None).run()
+        DemoSeeder(client, say=lambda _: None, approver_tokens=approvers).run()
         yield client, platform
     app.dependency_overrides.clear()
     database.dispose()

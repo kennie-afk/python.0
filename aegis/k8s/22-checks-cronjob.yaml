@@ -1,0 +1,70 @@
+# Scheduled checks and alert delivery, per tenant: audit-trail integrity, drift of recently scored
+# inputs against the active model's reference, retrain due. Kept out of the API replicas so they
+# stay stateless; Forbid means a slow run is never overlapped by the next. The owner connection is
+# used only to list tenant ids; the checks run as aegis_app, inside each tenant's row-level security.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: checks
+  namespace: aegis
+  labels: {app.kubernetes.io/name: checks, app.kubernetes.io/part-of: aegis}
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: jobs, app.kubernetes.io/part-of: aegis}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: checks
+              image: aegis-api:1.0.0
+              imagePullPolicy: IfNotPresent
+              command: [python, -m, aegis.ops, --once]
+              envFrom:
+                - configMapRef: {name: aegis-config}
+              env:
+                - name: AEGIS_RUN_MIGRATIONS
+                  value: "false"
+                - name: AEGIS_APP_PASSWORD
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_APP_PASSWORD}}
+                - name: POSTGRES_PASSWORD
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_DB_OWNER_PASSWORD}}
+                - name: AEGIS_DATABASE_URL
+                  value: postgresql+psycopg://aegis_app:$(AEGIS_APP_PASSWORD)@postgres:5432/aegis
+                - name: AEGIS_ADMIN_DATABASE_URL
+                  value: postgresql+psycopg://aegis:$(POSTGRES_PASSWORD)@postgres:5432/aegis
+                - name: AEGIS_JWT_SECRET
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_JWT_SECRET}}
+                - name: AEGIS_MODEL_SIGNING_KEY
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_MODEL_SIGNING_KEY, optional: true}}
+                - name: AEGIS_LEDGER_SIGNING_KEY
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_LEDGER_SIGNING_KEY}}
+                - name: AEGIS_SMTP_PASSWORD
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_SMTP_PASSWORD, optional: true}}
+                - name: AEGIS_ALERT_WEBHOOK
+                  valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_ALERT_WEBHOOK, optional: true}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "1", memory: 768Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

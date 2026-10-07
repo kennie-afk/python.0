@@ -6,7 +6,8 @@ import { FilterBar } from "@/components/filter-bar";
 import { PAGE_SIZE, Pager, first, pageOf } from "@/components/pager";
 import { Badge, Card, EmptyState, Meter, Notice, PageHeader, Stat, Table, rowClass, secondaryButtonClass } from "@/components/ui";
 import { startRetentionConversation } from "@/lib/actions";
-import type { ModelStatusView, StoredScoreView } from "@/lib/types";
+import { ModelVersions } from "@/components/model-versions";
+import type { ModelStatusView, ModelVersionView, StoredScoreView } from "@/lib/types";
 
 export default async function AttritionPage({
   searchParams
@@ -22,6 +23,7 @@ export default async function AttritionPage({
   let status: ModelStatusView | null = null;
   let roster: StoredScoreView[] = [];
   let rosterTotal = 0;
+  let versions: ModelVersionView[] = [];
   let error: string | null = null;
   try {
     const query = new URLSearchParams({
@@ -31,10 +33,12 @@ export default async function AttritionPage({
     if (band) {
       query.set("band", band);
     }
-    const [model, scores] = await Promise.all([
+    const [model, scores, models] = await Promise.all([
       api.get<ModelStatusView>("/v1/attrition/model", session.token),
-      api.page<StoredScoreView>(`/v1/attrition/scores?${query}`, session.token)
+      api.page<StoredScoreView>(`/v1/attrition/scores?${query}`, session.token),
+      api.get<ModelVersionView[]>("/v1/attrition/models", session.token)
     ]);
+    versions = models;
     status = model;
     roster = scores.items;
     rosterTotal = scores.total;
@@ -62,6 +66,7 @@ export default async function AttritionPage({
           <TrainOnSample />
         </Card>
       ) : null}
+      {!error && status && !status.trained && versions.length > 0 ? <div className="mt-6"><ModelVersions versions={versions} /></div> : null}
 
       {!error && status?.trained ? (
         <div className="space-y-6">
@@ -74,6 +79,8 @@ export default async function AttritionPage({
             />
             <Stat label="Algorithm" value={(status.algorithm ?? "—").replaceAll("_", " ")} />
           </div>
+
+          {versions.length > 0 ? <ModelVersions versions={versions} /> : null}
 
           <Card
             title="What drives the prediction"

@@ -1,5 +1,5 @@
 import { api, describeError } from "@/lib/api";
-import type { DriftRow } from "@/lib/types";
+import type { DriftRow, LiveDrift } from "@/lib/types";
 import { Badge, Card, Meter, Notice, PageHeader, Table } from "@/components/ui";
 import Link from "next/link";
 
@@ -14,9 +14,11 @@ export default async function DriftPage({
   const applied = Number(shift ?? 0);
 
   let rows: DriftRow[] = [];
+  let live: LiveDrift | null = null;
   let error: string | null = null;
 
   try {
+    live = await api.get<LiveDrift>("/v1/drift/live");
     rows = await api.get<DriftRow[]>(`/v1/drift?shift=${applied}`);
   } catch (caught) {
     error = describeError(caught);
@@ -33,6 +35,44 @@ export default async function DriftPage({
 
       {error ? <Notice tone="danger">{error}</Notice> : null}
 
+      {live ? (
+        <div className="mb-6">
+          <Card
+            title="Live serving traffic"
+            description={`The feature rows the ranker actually received while serving, against its training reference. ${live.rows.toLocaleString()} rows buffered.`}
+          >
+            {!live.ready ? (
+              <Notice tone="info">
+                {live.rows} of the {live.minimum_rows} rows needed so far. Serve some feeds and this fills in;
+                nothing is shown until there is real traffic to compare.
+              </Notice>
+            ) : (
+              <>
+                <Table head={["Feature", "PSI", "KS statistic", "Verdict"]}>
+                  {live.reports.map((row) => (
+                    <tr key={row.feature} className="border-b border-[var(--color-line)] last:border-0">
+                      <td className="px-3 py-2.5 text-sm">{row.feature.replaceAll("_", " ")}</td>
+                      <td className="px-3 py-2.5 text-xs tabular-nums">{row.psi.toFixed(3)}</td>
+                      <td className="px-3 py-2.5 text-xs tabular-nums text-[var(--color-muted)]">{row.ks_statistic.toFixed(4)}</td>
+                      <td className="px-3 py-2.5"><Badge value={row.severity} /></td>
+                    </tr>
+                  ))}
+                </Table>
+                {live.trained_but_not_served.length > 0 ? (
+                  <div className="mt-3">
+                    <Notice tone="warn">
+                      Trained on but never supplied at serving: {live.trained_but_not_served.join(", ")}. The
+                      ranker reads these as zero when serving, which is a train and serve mismatch, not drift.
+                    </Notice>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </Card>
+        </div>
+      ) : null}
+
+      <h2 className="mb-2 text-sm font-semibold">Injected shift (demonstration)</h2>
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <span className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
           Injected shift

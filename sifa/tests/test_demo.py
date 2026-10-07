@@ -55,13 +55,13 @@ def test_an_injected_shift_is_still_caught(client: TestClient) -> None:
 def test_a_second_benchmark_is_refused_while_one_is_running(client: TestClient) -> None:
     assert api_module._benchmark_lock.acquire(blocking=False)
     try:
-        response = client.get("/v1/retrieval/benchmark?corpus=1000")
+        response = client.post("/v1/retrieval/benchmark?corpus=1000")
         assert response.status_code == 409
         assert "already running" in response.json()["detail"]
     finally:
         api_module._benchmark_lock.release()
 
 def test_the_benchmark_lock_is_released_after_a_refusal_and_after_a_run(client: TestClient) -> None:
-    assert client.get("/v1/retrieval/benchmark?corpus=100").status_code == 422  # below the minimum
+    assert client.post("/v1/retrieval/benchmark?corpus=100").status_code == 422  # below the minimum
     assert api_module._benchmark_lock.acquire(blocking=False)
     api_module._benchmark_lock.release()

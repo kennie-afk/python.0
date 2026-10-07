@@ -1,0 +1,152 @@
+{
+  "dataset": "MovieLens ml-latest-small (GroupLens), ratings >= 4.0 as positives",
+  "users": 542,
+  "items": 6227,
+  "train_interactions": 38548,
+  "dropped_users_cold_target": 61,
+  "protocol": "leave-last-out by timestamp, full-catalogue ranking, ties against the model",
+  "tuning_on_validation": [
+    {
+      "dimension": 32,
+      "epochs": 12,
+      "learning_rate": 0.08,
+      "negatives": 8,
+      "final_loss": 0.5479,
+      "train_seconds": 130.0,
+      "validation_ndcg_at_10": 0.027,
+      "validation_hit_rate_at_10": 0.0498
+    },
+    {
+      "dimension": 64,
+      "epochs": 12,
+      "learning_rate": 0.08,
+      "negatives": 8,
+      "final_loss": 0.4581,
+      "train_seconds": 119.1,
+      "validation_ndcg_at_10": 0.0329,
+      "validation_hit_rate_at_10": 0.0683
+    },
+    {
+      "dimension": 64,
+      "epochs": 24,
+      "learning_rate": 0.08,
+      "negatives": 8,
+      "final_loss": 0.4138,
+      "train_seconds": 212.3,
+      "validation_ndcg_at_10": 0.0336,
+      "validation_hit_rate_at_10": 0.0664
+    },
+    {
+      "dimension": 64,
+      "epochs": 24,
+      "learning_rate": 0.04,
+      "negatives": 16,
+      "final_loss": 0.5988,
+      "train_seconds": 371.5,
+      "validation_ndcg_at_10": 0.0283,
+      "validation_hit_rate_at_10": 0.0572
+    }
+  ],
+  "chosen": {
+    "dimension": 64,
+    "epochs": 24,
+    "learning_rate": 0.08,
+    "negatives": 8,
+    "final_train_seconds": 283.6
+  },
+  "test": {
+    "random": {
+      "hit_rate_at_10": 0.0,
+      "hit_rate_ci95_low": 0.0,
+      "hit_rate_ci95_high": 0.0,
+      "ndcg_at_10": 0.0,
+      "mrr_at_10": 0.0
+    },
+    "popularity": {
+      "hit_rate_at_10": 0.0406,
+      "hit_rate_ci95_low": 0.0258,
+      "hit_rate_ci95_high": 0.0572,
+      "ndcg_at_10": 0.022,
+      "mrr_at_10": 0.0161
+    },
+    "item_knn_cosine": {
+      "hit_rate_at_10": 0.0609,
+      "hit_rate_ci95_low": 0.0424,
+      "hit_rate_ci95_high": 0.083,
+      "ndcg_at_10": 0.0288,
+      "mrr_at_10": 0.0192
+    },
+    "sifa_two_tower_exact": {
+      "hit_rate_at_10": 0.0535,
+      "hit_rate_ci95_low": 0.0351,
+      "hit_rate_ci95_high": 0.072,
+      "ndcg_at_10": 0.0263,
+      "mrr_at_10": 0.0182
+    },
+    "sifa_two_tower_hnsw": {
+      "hit_rate_at_10": 0.0535,
+      "hit_rate_ci95_low": 0.0351,
+      "hit_rate_ci95_high": 0.072,
+      "ndcg_at_10": 0.0263,
+      "mrr_at_10": 0.0182
+    }
+  },
+  "ann_end_to_end_ef": 128,
+  "ann_index": {
+    "vectors": 6227,
+    "dimension": 64,
+    "queries": 542,
+    "sifa_build_seconds": 44.95,
+    "faiss_build_seconds": 0.64,
+    "numpy_exact_p50_ms": 0.175,
+    "numpy_exact_p95_ms": 0.277,
+    "sweep": [
+      {
+        "ef_search": 16,
+        "sifa_recall_at_10": 0.9229,
+        "sifa_p50_ms": 0.937,
+        "sifa_p95_ms": 1.468,
+        "faiss_recall_at_10": 0.9526,
+        "faiss_p50_ms": 0.038,
+        "faiss_p95_ms": 0.069
+      },
+      {
+        "ef_search": 32,
+        "sifa_recall_at_10": 0.9703,
+        "sifa_p50_ms": 1.629,
+        "sifa_p95_ms": 2.672,
+        "faiss_recall_at_10": 0.9886,
+        "faiss_p50_ms": 0.059,
+        "faiss_p95_ms": 0.098
+      },
+      {
+        "ef_search": 64,
+        "sifa_recall_at_10": 0.9889,
+        "sifa_p50_ms": 2.909,
+        "sifa_p95_ms": 4.211,
+        "faiss_recall_at_10": 0.998,
+        "faiss_p50_ms": 0.083,
+        "faiss_p95_ms": 0.148
+      },
+      {
+        "ef_search": 128,
+        "sifa_recall_at_10": 0.9959,
+        "sifa_p50_ms": 5.506,
+        "sifa_p95_ms": 7.485,
+        "faiss_recall_at_10": 0.9993,
+        "faiss_p50_ms": 0.174,
+        "faiss_p95_ms": 0.298
+      },
+      {
+        "ef_search": 256,
+        "sifa_recall_at_10": 0.9985,
+        "sifa_p50_ms": 10.376,
+        "sifa_p95_ms": 14.124,
+        "faiss_recall_at_10": 1.0,
+        "faiss_p50_ms": 0.35,
+        "faiss_p95_ms": 0.598
+      }
+    ]
+  },
+  "machine": "x86_64, Python 3.12.3"
+}

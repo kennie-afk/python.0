@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 
 import numpy as np
 from sklearn.ensemble import GradientBoostingClassifier
@@ -54,16 +55,127 @@ class PlattCalibrator:
     def is_fitted(self) -> bool:
         return self._model is not None
 
+    def parameters(self) -> tuple[float, float]:
+        assert self._model is not None
+        return float(self._model.coef_[0, 0]), float(self._model.intercept_[0])
+
+@dataclass(frozen=True, slots=True)
+class FrozenBoostedTrees:
+    """A fitted gradient-boosted classifier reduced to plain arrays.
+
+    Scoring needs only tree traversal and a logistic link, so the model can be stored as numbers
+    (npz, no pickle) and served without scikit-learn. Trees are padded to the largest node count;
+    a node is a leaf when its left child is -1.
+    """
+
+    left: np.ndarray
+    right: np.ndarray
+    feature: np.ndarray
+    threshold: np.ndarray
+    value: np.ndarray
+    init_raw: float
+    learning_rate: float
+    depth: int
+
+    @classmethod
+    def from_sklearn(cls, model: GradientBoostingClassifier) -> FrozenBoostedTrees:
+        trees = [stage[0].tree_ for stage in model.estimators_]
+        width = max(tree.node_count for tree in trees)
+        shape = (len(trees), width)
+        left = np.full(shape, -1, dtype=np.int64)
+        right = np.full(shape, -1, dtype=np.int64)
+        feature = np.zeros(shape, dtype=np.int64)
+        threshold = np.zeros(shape, dtype=np.float64)
+        value = np.zeros(shape, dtype=np.float64)
+        for position, tree in enumerate(trees):
+            count = tree.node_count
+            left[position, :count] = tree.children_left
+            right[position, :count] = tree.children_right
+            feature[position, :count] = np.maximum(tree.feature, 0)
+            threshold[position, :count] = tree.threshold
+            value[position, :count] = tree.value[:, 0, 0]
+        prior = float(model.init_.predict_proba(np.zeros((1, model.n_features_in_)))[0, 1])
+        return cls(
+            left, right, feature, threshold, value,
+            init_raw=float(np.log(prior / (1.0 - prior))),
+            learning_rate=float(model.learning_rate),
+            depth=int(max(tree.max_depth for tree in trees)),
+        )
+
+    def raw(self, matrix: np.ndarray) -> np.ndarray:
+        # scikit-learn compares float32 features with float64 thresholds; do the same.
+        x = np.asarray(matrix, dtype=np.float32)
+        n_trees = self.left.shape[0]
+        node = np.zeros((n_trees, len(x)), dtype=np.int64)
+        trees = np.arange(n_trees).reshape(-1, 1)
+        rows = np.arange(len(x)).reshape(1, -1)
+        for _ in range(self.depth + 1):
+            is_leaf = self.left[trees, node] == -1
+            goes_left = x[rows, self.feature[trees, node]] <= self.threshold[trees, node]
+            step = np.where(goes_left, self.left[trees, node], self.right[trees, node])
+            node = np.where(is_leaf, node, step)
+        return self.init_raw + self.learning_rate * self.value[trees, node].sum(axis=0)
+
+    def predict(self, matrix: np.ndarray) -> np.ndarray:
+        return np.asarray(1.0 / (1.0 + np.exp(-self.raw(matrix))), dtype=np.float64)
+
+
 class LearningToRank:
     def __init__(self, config: RankerConfig) -> None:
         self._config = config
         self._model: GradientBoostingClassifier | None = None
+        self._frozen: FrozenBoostedTrees | None = None
+        self._platt: tuple[float, float] | None = None
         self._calibrator = PlattCalibrator()
         self._report: TrainingReport | None = None
 
     @property
     def is_trained(self) -> bool:
-        return self._model is not None
+        return self._model is not None or self._frozen is not None
+
+    @property
+    def config(self) -> RankerConfig:
+        return self._config
+
+    def to_arrays(self) -> dict[str, np.ndarray]:
+        """The trained model as plain arrays for np.savez; no pickle is involved."""
+        if self._model is None and self._frozen is None:
+            raise NotTrainedError("the ranker has not been trained")
+        frozen = self._frozen or FrozenBoostedTrees.from_sklearn(self._model)
+        platt = self._platt
+        if platt is None and self._calibrator.is_fitted:
+            platt = self._calibrator.parameters()
+        report = self.report
+        meta = {
+            "config": asdict(self._config),
+            "report": {**asdict(report), "features": list(report.features)},
+            "init_raw": frozen.init_raw,
+            "learning_rate": frozen.learning_rate,
+            "depth": frozen.depth,
+            "platt": list(platt) if platt else None,
+        }
+        return {
+            "left": frozen.left, "right": frozen.right, "feature": frozen.feature,
+            "threshold": frozen.threshold, "value": frozen.value,
+            "meta": np.array(json.dumps(meta, sort_keys=True)),
+        }
+
+    @classmethod
+    def from_arrays(cls, arrays: dict[str, np.ndarray]) -> LearningToRank:
+        meta = json.loads(str(arrays["meta"]))
+        config = dict(meta["config"])
+        config["feature_order"] = tuple(config["feature_order"])
+        ranker = cls(RankerConfig(**config))
+        ranker._frozen = FrozenBoostedTrees(
+            arrays["left"], arrays["right"], arrays["feature"], arrays["threshold"],
+            arrays["value"], float(meta["init_raw"]), float(meta["learning_rate"]),
+            int(meta["depth"]),
+        )
+        ranker._platt = tuple(meta["platt"]) if meta["platt"] else None
+        report = dict(meta["report"])
+        report["features"] = tuple(report["features"])
+        ranker._report = TrainingReport(**report)
+        return ranker
 
     @property
     def report(self) -> TrainingReport:
@@ -127,10 +239,17 @@ class LearningToRank:
         return self._report
 
     def score(self, rows: list[dict[str, float]]) -> np.ndarray:
-        if self._model is None:
+        if self._model is None and self._frozen is None:
             raise NotTrainedError("the ranker has not been trained")
         if not rows:
             return np.empty(0, dtype=np.float64)
+        if self._frozen is not None:
+            raw = self._frozen.predict(self._matrix(rows))
+            if self._platt is None:
+                return raw
+            coef, intercept = self._platt
+            return np.asarray(1.0 / (1.0 + np.exp(-(coef * raw + intercept))), dtype=np.float64)
+        assert self._model is not None
         raw = self._model.predict_proba(self._matrix(rows))[:, 1]
         return self._calibrator.apply(raw)
 

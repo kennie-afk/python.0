@@ -18,3 +18,6 @@ class ExperimentError(SifaError):
 
 class RegistryError(SifaError):
     pass
+
+class NotFoundError(SifaError):
+    pass

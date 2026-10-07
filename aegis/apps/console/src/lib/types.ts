@@ -107,6 +107,31 @@ export interface ModelStatusView {
   positives: number | null;
   trained_at: string | null;
   feature_importance: Record<string, number>;
+  version?: number | null;
+  gate?: string | null;
+  data_hash?: string | null;
+  created_by?: string | null;
+  findings?: string[];
+}
+
+export interface ModelVersionView {
+  version: number;
+  algorithm: string;
+  rows: number;
+  positives: number;
+  data_hash: string;
+  gate: string;
+  active: boolean;
+  created_by: string;
+  created_at: string;
+  activated_at: string | null;
+  fidelity: {
+    score?: number | null;
+    findings?: string[];
+    notes?: string[];
+    drift?: { feature: string; severity: string; statistic: number }[];
+    determinism?: { case: string; stability: string }[];
+  };
 }
 
 export interface DriverView {
@@ -129,9 +154,16 @@ export interface TrainResponse {
   positive_rate: number;
   algorithm: string;
   feature_importance: Record<string, number>;
+  version?: number;
+  gate?: string;
+  active?: boolean;
+  findings?: string[];
 }
 
 export interface IntegrityView {
+  signed?: number;
+  unsigned?: number;
+  signatures_checked?: boolean;
   intact: boolean;
   entries_checked: number;
   broken_at: number | null;
@@ -143,6 +175,7 @@ export interface Problem {
   detail: string;
   status: number;
   code: string;
+  reasons?: string[];
 }
 
 export interface OverviewView {
@@ -178,4 +211,105 @@ export interface StoredScoreView {
   needs_intervention: boolean;
   drivers: DriverView[];
   scored_at: string;
+}
+
+
+export interface VerificationReport {
+  id: number;
+  kind: "determinism" | "drift" | "fidelity";
+  label: string;
+  verdict: string;
+  report: Record<string, unknown>;
+  ledger_sequence: number | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface SkillHolding {
+  skill: string;
+  proficiency: string;
+  mentions: number;
+  years: number;
+}
+
+export interface GapView {
+  skill: string;
+  required: string;
+  supply: number;
+  demand: number;
+  shortfall: number;
+  covered: boolean;
+}
+
+export interface GapForecastView {
+  horizon_months: number;
+  summary: string;
+  total_shortfall: number;
+  gaps: GapView[];
+}
+
+export interface MobilityMatchView {
+  subject_key: string;
+  role_id: string;
+  title: string;
+  score: number;
+  ready_now: boolean;
+  stretch: boolean;
+  development_path: string[];
+}
+
+export interface WorkforceMonth {
+  month: number;
+  headcount: number;
+  effective_capacity: number;
+  leavers: number;
+  joiners: number;
+  demand: number;
+  shortfall: number;
+}
+
+export interface WorkforceResult {
+  months: number;
+  results: {
+    scenario: string;
+    final_headcount: number;
+    total_leavers: number;
+    total_hires: number;
+    first_shortfall_month: number | null;
+    peak_shortfall: number;
+    summary: string;
+    timeline: WorkforceMonth[];
+  }[];
+  hires_required: Record<string, number | string>;
+}
+
+export interface SentimentGroup {
+  group: string;
+  respondents: number;
+  overall: number;
+  aspects: { aspect: string; score: number; mentions: number; negative: boolean }[];
+}
+
+export interface SentimentView {
+  minimum_group_size: number;
+  summary: string;
+  groups: SentimentGroup[];
+  suppressed_groups: string[];
+}
+
+export interface EarlyWarningView {
+  warnings: { group: string; aspect: string; previous: number; current: number; drop: number }[];
+  ledger_sequence: number;
+  previous: SentimentView;
+  current: SentimentView;
+}
+
+export interface LedgerHeadView {
+  sequence: number | null;
+  entry_hash: string;
+  entries: number;
+  signed: boolean;
+  signature: string | null;
+  key_fingerprint: string | null;
+  generated_at: string;
 }

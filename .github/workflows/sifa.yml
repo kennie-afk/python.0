@@ -1,0 +1,38 @@
+name: sifa
+
+on:
+  push:
+    branches: [main]
+    paths: ["sifa/**", ".github/workflows/sifa.yml"]
+  pull_request:
+    paths: ["sifa/**", ".github/workflows/sifa.yml"]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sifa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --extra api --extra dev
+      - run: uv run ruff check .
+      - run: uv run mypy src tests
+      - run: uv run pytest -q
+
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sifa/apps/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sifa/apps/console/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

@@ -33,7 +33,7 @@ the evidence that it behaved correctly are the same system.
 | `ledger` | hash-chained, tamper-evident record of every decision and approval | implemented |
 | `anonymization` | identity obfuscation, pedigree neutralisation, temporal flattening | implemented |
 | `bias` | four-fifths-rule adverse impact testing with statistical significance | implemented |
-| `verification` | determinism probing, drift detection, fidelity gating | implemented |
+| `verification` | determinism probing, drift detection, fidelity gating; gates every trained attrition model | implemented, over HTTP and in the console |
 | `hr` | workflow definitions for hiring, onboarding, retention, offboarding | implemented |
 | `attrition` | flight-risk pipeline: feature engineering, model, risk banding, drivers | implemented |
 | `api` | HTTP surface over the whole platform, authenticated and tenant-scoped | implemented |
@@ -41,9 +41,11 @@ the evidence that it behaved correctly are the same system.
 | `persistence` | PostgreSQL storage for runs, ledger, policies, models and API keys | implemented |
 | `auth` | JWT tokens and hashed API keys carrying tenant and roles | implemented |
 | `integrations` | email and calendar tools an agent actually acts through | implemented |
-| `skills` | skill taxonomy, proficiency extraction, gap forecasting, mobility matching | implemented |
-| `workforce` | headcount, attrition and capacity simulation with hiring ramp | implemented |
-| `sentiment` | aspect-based sentiment with a privacy threshold and early warning | implemented |
+| `skills` | skill taxonomy, proficiency extraction, gap forecasting, mobility matching | implemented, over HTTP and in the console |
+| `workforce` | headcount, attrition and capacity simulation with hiring ramp | implemented, over HTTP and in the console |
+| `sentiment` | aspect-based sentiment with a privacy threshold and early warning | implemented, over HTTP and in the console |
+| `ops` | scheduled checks (ledger integrity, drift of live scoring inputs, retrain due) and alert delivery | implemented |
+| `security` | the signing keys that live outside the database | implemented |
 
 ## Governance is structural, not configurable
 
@@ -124,7 +126,7 @@ uv run ruff check .
 uv run mypy
 ```
 
-390 tests. Passes `mypy --strict` and `ruff` with zero findings.
+534 tests. Passes `mypy --strict` and `ruff` with zero findings.
 
 ```bash
 docker compose up
@@ -134,7 +136,7 @@ docker compose up
 uv run uvicorn aegis.api.app:app --reload
 ```
 
-Twenty-six endpoints covering workflow runs and their filters, approvals, external results, anonymisation,
+About fifty endpoints covering workflow runs and their filters, approvals, external results, anonymisation,
 screening history, adverse impact testing and its stored findings, attrition training, scoring and the
 retention roster, and ledger inspection, search and export. Every request is authenticated by a
 token or API key that carries its tenant (a bare tenant header is refused, see below), and one
@@ -161,6 +163,116 @@ Gradient boosting, random forest and logistic regression are all supported. Trai
 than forty rows is refused, as is training where every outcome is the same, because a model
 fitted on either is not evidence. Scores carry the factors driving them, ranked, so a manager
 receives a reason rather than a number.
+
+### The governance gate on models
+
+A trained model does not serve until it has been checked, and the verdict is stored with it.
+`/v1/attrition/train` runs three checks and stores the result as a new **version** whatever it is:
+
+* **determinism**: the same employee scored ten times must give one number, and training twice on
+  the same data must give the same model (a model that cannot be reproduced cannot be audited);
+* **drift**: the new training population against the reference distribution kept with the active
+  version, per feature (PSI). A retrain on a population that has moved wholesale is held;
+* **adverse impact**, when the request supplies a `groups` label per employee: the four-fifths rule
+  on who the model flags high risk. The labels are used for this test only, are never a feature and
+  are not stored.
+
+`FidelityScorer` turns determinism and drift into PASS, WARN or BLOCK (a finding in the impact test
+can lower PASS to WARN, never raise anything). PASS and WARN activate the version (WARN is flagged in
+the response, the ledger and an alert). BLOCK stores it inactive and answers **409 with the reasons**;
+`/activate` refuses it and so does everything that scores. `/v1/attrition/score` serves the active
+version only, refuses a version whose signature fails, and reports `X-Aegis-Model-Version`,
+`X-Aegis-Gate` and, for batches of 200 or more, `X-Aegis-Drift` when the inputs are far from the
+training reference. The first model has no earlier reference, so its drift is not measured and the
+response says so. Small samples are not judged: PSI on a few rows is mostly sampling noise.
+
+`GET /v1/attrition/models` lists every version with its gate, `POST /v1/attrition/models/{n}/activate`
+and `/models/rollback` (APPROVER or ADMIN, written to the ledger with the approver's name) move between
+them; rollback skips versions that were blocked or fail their signature. Every score is also kept in
+an append-only `attrition_score_history` with its model version
+(`GET /v1/attrition/scores/{subject}/history`); the roster still shows only the latest.
+
+**Storage format.** Models used to be `pickle.dumps` in a text column, and `pickle.loads` on a database
+field is code execution for anyone who can write it. Now a model is stored as an `.npz` of plain
+numeric arrays (scaler, tree arrays or coefficients, reference rows) and served by a numpy
+implementation that reproduces scikit-learn's scores to 1e-9 (asserted for all three algorithms);
+loading uses `allow_pickle=False`. skops was not used: the three estimators the code supports reduce to
+arrays, which needs no extra dependency and no trust in a loader. Each blob is signed with HMAC-SHA256
+under `AEGIS_MODEL_SIGNING_KEY` (default: derived from `AEGIS_JWT_SECRET`) over tenant, version, gate,
+payload hash and data hash, so a tampered blob, a swapped blob, a model moved to another tenant or a
+gate edited from BLOCK to PASS all fail to load.
+The migration converts old rows without ever calling `pickle.loads`: an allow-list unpickler accepts
+exactly the numpy and scikit-learn classes of a fitted pipeline and refuses everything else (a test
+proves a pickle that runs `os.system` is refused and runs nothing). Converted models become active WARN
+versions that say they were never gated and have no drift reference; rows that cannot be converted are
+skipped and logged. The old table is left in place, unused.
+
+## Verification, skills, workforce and sentiment
+
+These modules had tests and no way in. They now have endpoints and console screens (Verification,
+Skills, Workforce, Sentiment). Computation needs OPERATOR; reading stored results needs a read role.
+
+* `POST /v1/verification/determinism | drift | fidelity`, `GET /v1/verification/reports[/{id}]`:
+  determinism runs the live screener repeatedly on cases you supply; drift is PSI, KS or categorical PSI
+  on two samples; fidelity combines both into PASS / WARN / BLOCK. Results are stored per tenant and each
+  verdict is written into the hash chain.
+* `GET /v1/skills/taxonomy`, `POST /v1/skills/extract | gaps | mobility | candidates`: computed on
+  request against a small default taxonomy (a real deployment supplies its own); nothing is stored,
+  because the inputs are free-text evidence and the outputs are not decisions.
+* `POST /v1/workforce/simulate`: scenarios compared month by month, with an optional "what hiring rate
+  reaches this headcount" solve (bounded, so a request cannot ask for an hour of compute). Not stored.
+* `POST /v1/sentiment/analyse | early-warning`: group aggregates only; an early warning is written to the
+  ledger and queued as an alert.
+
+## Keys, tokens and sign-in
+
+`POST/GET /v1/keys`, `/v1/keys/{id}/rotate | revoke | revoke-tokens` (ADMIN) create, list, rotate and
+revoke API keys; the secret is shown once, and a secret never reaches the ledger. Every API key has a
+surrogate `key_id`, which the tokens issued from it carry; each request checks the key still stands, so
+**revoking or rotating a key ends its tokens immediately** instead of at expiry, and `revoke-tokens` ends
+only the tokens (a per-key `not_before`). The last active ADMIN key cannot be revoked. Tokens minted
+without a key (internal and test use) are not revocable this way. `/v1/auth/token` locks out an address
+after `AEGIS_TOKEN_FAILURES_PER_MINUTE` (10) failures in a minute with 429 and `Retry-After`; successful
+sign-ins do not count. The counter is in process memory, so with several replicas each keeps its own, and
+behind a proxy run uvicorn with `--proxy-headers` so the address is the caller's.
+
+## The ledger and evidence
+
+The chain used to be a plain SHA-256 chain: tamper-evident against a partial edit, but anyone who can
+write the table can edit an entry and recompute every hash after it. Now, with `AEGIS_LEDGER_SIGNING_KEY`
+(32+ characters, held **outside** the database, **required when `AEGIS_ENV=production`**), every entry
+carries an HMAC over tenant, sequence and entry hash. Verification with the key fails a recomputed chain,
+an entry whose signature does not match, and an unsigned entry after a signed one (a stripped signature);
+production also requires every entry to be signed. Without a key it still verifies the hash chain and says
+`signatures_checked: false`. Limits worth stating: a deployment that never signed can be wholly rewritten
+by someone with write access until it is signed once (`python -m aegis.ops.sign_ledger` signs existing
+history after verifying the chain), and truncation of the tail is only caught against a head you recorded
+elsewhere.
+
+* `GET /v1/ledger/head`: the chain's end (sequence, hash, HMAC attestation, key fingerprint). Record it
+  somewhere the database's administrators cannot write.
+* `GET /v1/ledger/evidence?format=json|ndjson&from=&to=`: a manifest (head, count, date range, anchor
+  hash, signature) and every entry with its hashes and signature. A date range returns a slice that links
+  back into the full chain through its anchor.
+* `src/aegis/ledger/verify_evidence.py` (also `GET /v1/ledger/evidence/verifier`; standard library only):
+  `AEGIS_LEDGER_SIGNING_KEY=... python verify_evidence.py evidence.json [--expect-head-hash H]` checks the
+  manifest, the count and sequence, every hash, link and signature, and the head, offline, trusting
+  nothing from this service. Exit status 1 on any failure. Tests rebuild a chain in the database without
+  the key and show both the API and the script reject it.
+
+## Scheduled checks and alerts
+
+`python -m aegis.ops [--once]` (a compose service `checks`, a Kubernetes CronJob every 15 minutes) runs per
+tenant: ledger integrity; drift of the inputs actually scored in the last 30 days (kept in the score
+history) against the active model's reference, only from 200 rows; and whether a retrain is due (model age
+over `AEGIS_RETRAIN_MAX_AGE_DAYS`, 90, or drift). A retrain is only ever **recommended**: Aegis holds no
+outcome labels, so a person supplies new training data. `POST /v1/ops/checks` (ADMIN) runs the same checks
+for one tenant now. Alerts (model WARN/BLOCK, drift, retrain recommended, ledger or model integrity
+failure, sentiment early warning) are written to an outbox table and delivered from it, so a dead webhook
+or mail server delays an alert instead of losing it: five attempts each, a persisting condition raises one
+alert not one per run, and `GET /v1/alerts` shows every alert and whether it arrived. Channels:
+`AEGIS_ALERT_WEBHOOK` (JSON POST, signed with `AEGIS_ALERT_WEBHOOK_SECRET` in `X-Aegis-Signature`) and
+`AEGIS_ALERT_EMAIL_TO` through the same SMTP transport as the email tool; with neither, alerts stay queued.
 
 ## Reasoning
 
@@ -215,6 +327,15 @@ that dropped sharply, worst first.
 ```bash
 alembic upgrade head
 ```
+
+Migrations are not a replica's job. The image's entrypoint only migrates when `AEGIS_RUN_MIGRATIONS=true`,
+which is the default so a lone `docker run` against an empty database still works; compose runs
+`alembic upgrade head` once in a `migrate` service that the API and checks wait for
+(`service_completed_successfully`), and Kubernetes runs it as the `migrate` Job (`k8s/21-migrate-job.yaml`:
+apply it and `kubectl wait --for=condition=complete job/migrate` before rolling the Deployment, which sets
+`AEGIS_RUN_MIGRATIONS=false`). Concurrent runs are safe anyway: migrations take a PostgreSQL advisory lock.
+The platform (secrets, database role check, ledger key) is built when the app starts, under a lock, not on
+the first request, so a missing secret stops the process before it takes traffic.
 
 Schema is versioned rather than created implicitly, and the initial revision applies and
 reverses cleanly.
@@ -290,7 +411,7 @@ What it creates, all invented and reproducible from a fixed seed:
 
 A few honest limits. The scorer is deterministic and simple on purpose, so a demo gives the same
 answer every time; the screening *values* are not a claim about a real model. Interview slots are
-kept in memory and are lost if the API restarts. The people in the demo are synthetic.
+kept per tenant in the database and survive a restart. The people in the demo are synthetic.
 
 ## Running it
 

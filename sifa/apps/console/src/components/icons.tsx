@@ -17,7 +17,8 @@ export type IconName =
   | "registry"
   | "experiment"
   | "drift"
-  | "load";
+  | "load"
+  | "evaluation";
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {
   const paths: Record<IconName, ReactNode> = {
@@ -46,6 +47,14 @@ export function Icon({ name, className }: { name: IconName; className?: string }
         <circle cx="6" cy="17" r="2.2" />
         <circle cx="18" cy="12" r="2.2" />
         <path d="M8.2 7.9 15.8 11.2M8.2 16.1 15.8 12.8" />
+      </>
+    ),
+    evaluation: (
+      <>
+        <path d="M4 20V4" />
+        <path d="M4 20h16" />
+        <rect x="7.5" y="11" width="3" height="6" rx="0.8" />
+        <rect x="13" y="7" width="3" height="10" rx="0.8" />
       </>
     ),
     registry: (

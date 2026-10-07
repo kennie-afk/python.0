@@ -91,7 +91,9 @@ export const api = {
 
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
-    return error.problem?.detail ?? error.message;
+    const reasons = error.problem?.reasons;
+    const base = error.problem?.detail ?? error.message;
+    return reasons && reasons.length > 0 ? `${base} Reasons: ${reasons.join("; ")}.` : base;
   }
   if (error instanceof Error && error.message.includes("fetch failed")) {
     return "The Aegis API is not reachable. Check that it is running on " + API + ".";

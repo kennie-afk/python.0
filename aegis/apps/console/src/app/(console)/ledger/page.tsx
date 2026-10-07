@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/session";
 import { FilterBar } from "@/components/filter-bar";
 import { PAGE_SIZE, Pager, first, pageOf } from "@/components/pager";
 import { Badge, Card, EmptyState, Notice, PageHeader, Table, rowClass, secondaryButtonClass } from "@/components/ui";
-import type { IntegrityView, LedgerEntryView } from "@/lib/types";
+import type { IntegrityView, LedgerEntryView, LedgerHeadView } from "@/lib/types";
 import { humanizeReason } from "@/lib/humanize";
 
 export default async function LedgerPage({
@@ -35,17 +35,20 @@ export default async function LedgerPage({
   let entries: LedgerEntryView[] = [];
   let total = 0;
   let integrity: IntegrityView | null = null;
+  let head: LedgerHeadView | null = null;
   let error: string | null = null;
   const checkedAt = new Date();
 
   try {
-    const [result, verdict] = await Promise.all([
+    const [result, verdict, headView] = await Promise.all([
       api.page<LedgerEntryView>(`/v1/ledger/search?${query}`, session.token),
-      api.get<IntegrityView>("/v1/ledger/verify", session.token)
+      api.get<IntegrityView>("/v1/ledger/verify", session.token),
+      api.get<LedgerHeadView>("/v1/ledger/head", session.token)
     ]);
     entries = result.items;
     total = result.total;
     integrity = verdict;
+    head = headView;
   } catch (caught) {
     error = describeError(caught);
   }
@@ -126,6 +129,33 @@ export default async function LedgerPage({
             }
           ]}
         />
+      ) : null}
+
+      {head ? (
+        <div className="mb-6">
+          <Card
+            title="Evidence pack"
+            description={
+              head.signed
+                ? "Every entry carries an HMAC made with a key held outside the database, so a chain rebuilt by someone who can only write the table does not verify. The pack can be checked offline."
+                : "Signing is off: set AEGIS_LEDGER_SIGNING_KEY. Without it the chain is tamper-evident only against partial edits."
+            }
+            actions={
+              <div className="flex gap-2">
+                <a href="/ledger/evidence?format=json" className={secondaryButtonClass}>JSON</a>
+                <a href="/ledger/evidence?format=ndjson" className={secondaryButtonClass}>NDJSON</a>
+              </div>
+            }
+          >
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+              Head: entry {head.sequence ?? "none"}, <span className="font-mono">{head.entry_hash.slice(0, 16)}</span>
+              {head.key_fingerprint ? <>, key <span className="font-mono">{head.key_fingerprint}</span></> : null}.
+              {integrity && integrity.signed !== undefined ? ` ${integrity.signed} signed, ${integrity.unsigned ?? 0} unsigned.` : ""} Record the head
+              hash somewhere the database&apos;s administrators cannot write, then pass it to the verifier with
+              <span className="font-mono"> --expect-head-hash</span>.
+            </p>
+          </Card>
+        </div>
       ) : null}
 
       {!error && total === 0 ? (

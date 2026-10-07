@@ -5,6 +5,7 @@ const ITEMS: RailItem[] = [
   { href: "/feed", label: "Feed", icon: "feed" },
   { href: "/retrieval", label: "Search", icon: "search" },
   { href: "/model", label: "Ranker", icon: "model" },
+  { href: "/evaluation", label: "Evaluate", icon: "evaluation" },
   { href: "/registry", label: "Registry", icon: "registry" },
   { href: "/experiment", label: "Experiment", icon: "experiment" },
   { href: "/drift", label: "Drift", icon: "drift" },

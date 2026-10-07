@@ -1,0 +1,68 @@
+# Database migrations run once per release, here, and not on every API replica start (the Dockerfile
+# entrypoint only migrates when AEGIS_RUN_MIGRATIONS is true, which the Deployment turns off).
+# Apply this first and wait:  kubectl -n aegis wait --for=condition=complete job/migrate --timeout=300s
+# A finished Job cannot be edited; for the next release delete it first (kubectl -n aegis delete job migrate)
+# or let ttlSecondsAfterFinished expire. The Job is the only workload that holds the table owner's password.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: aegis
+  labels: {app.kubernetes.io/name: migrate, app.kubernetes.io/part-of: aegis}
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: jobs, app.kubernetes.io/part-of: aegis}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-postgres
+          image: aegis-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: [bash, -c, "until (echo > /dev/tcp/postgres/5432) 2>/dev/null; do echo waiting for postgres; sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: migrate
+          image: aegis-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: [alembic, upgrade, head]
+          env:
+            - name: AEGIS_RUN_MIGRATIONS
+              value: "false"
+            - name: AEGIS_APP_PASSWORD
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_APP_PASSWORD}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_DB_OWNER_PASSWORD}}
+            - name: AEGIS_MIGRATION_URL
+              value: postgresql+psycopg://aegis:$(POSTGRES_PASSWORD)@postgres:5432/aegis
+            # Signs the models converted from the old pickle format on the first upgrade.
+            - name: AEGIS_JWT_SECRET
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_JWT_SECRET}}
+            - name: AEGIS_MODEL_SIGNING_KEY
+              valueFrom: {secretKeyRef: {name: aegis-secrets, key: AEGIS_MODEL_SIGNING_KEY, optional: true}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

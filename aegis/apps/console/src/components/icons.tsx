@@ -16,7 +16,11 @@ export type IconName =
   | "screening"
   | "retention"
   | "compliance"
-  | "ledger";
+  | "ledger"
+  | "verification"
+  | "skills"
+  | "workforce"
+  | "sentiment";
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {
   const paths: Record<IconName, ReactNode> = {
@@ -64,6 +68,32 @@ export function Icon({ name, className }: { name: IconName; className?: string }
       <>
         <rect x="4.5" y="3.5" width="15" height="17" rx="2" />
         <path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
+      </>
+    ),
+    verification: (
+      <>
+        <path d="M5 12.5 9.5 17 19 7.5" />
+        <path d="M4 4.5h6M14 4.5h6" />
+      </>
+    ),
+    skills: (
+      <>
+        <circle cx="8" cy="8" r="3" />
+        <circle cx="16.5" cy="9.5" r="2.2" />
+        <path d="M3 19c.6-3 2.7-4.5 5-4.5s4.4 1.5 5 4.5" />
+        <path d="M15 14.8c2.3-.3 4.6.9 5.5 3.7" />
+      </>
+    ),
+    workforce: (
+      <>
+        <path d="M4 19V9M10 19V5M16 19v-7M21 19H3" />
+      </>
+    ),
+    sentiment: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8.5 14.5c1 1.2 2.1 1.8 3.5 1.8s2.5-.6 3.5-1.8" />
+        <path d="M9 9.8h.01M15 9.8h.01" />
       </>
     )
   };

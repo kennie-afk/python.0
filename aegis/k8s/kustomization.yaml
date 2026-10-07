@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aegis
+resources:
+  - 00-namespace.yaml
+  - 01-config.yaml
+  - 10-postgres.yaml
+  - 20-api.yaml
+  - 21-migrate-job.yaml
+  - 22-checks-cronjob.yaml
+  - 30-console.yaml
+  - 40-ingress.yaml
+  - 50-network-policy.yaml

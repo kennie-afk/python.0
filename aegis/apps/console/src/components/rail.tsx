@@ -20,7 +20,7 @@ export function Rail({ items }: { items: RailItem[] }) {
         <Image src="/mark.svg" alt="Aegis" width={256} height={256} className="h-7 w-7" priority />
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-2.5">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2.5">
         {items.map((item) => {
           const active =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);

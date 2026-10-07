@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-config
+  namespace: aegis
+data:
+  AEGIS_DB_OWNER_USER: aegis
+  # Only needed when a real language model or mail server is configured (secrets for them are optional in aegis-secrets).
+  AEGIS_MODEL_NAME: ""
+  AEGIS_MODEL_BASE_URL: ""
+  AEGIS_SMTP_HOST: ""
+  AEGIS_SMTP_PORT: "587"
+  # Demo seeding is for local use only; never true on a real deployment.
+  AEGIS_ALLOW_DEMO_SEED: "false"

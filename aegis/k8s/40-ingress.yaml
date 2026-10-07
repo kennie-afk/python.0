@@ -1,0 +1,25 @@
+# Needs an ingress-nginx controller and, for the certificate, cert-manager with a ClusterIssuer named letsencrypt-prod
+# (or change the annotation / supply your own aegis-tls Secret). Replace aegis.example.org with the real host. The API is
+# reached only through the console, which holds the session; nothing else is exposed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegis
+  namespace: aegis
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [aegis.example.org]
+      secretName: aegis-tls
+  rules:
+    - host: aegis.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: console, port: {number: 3000}}

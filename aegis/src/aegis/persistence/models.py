@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -105,8 +107,14 @@ class LedgerRow(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # HMAC over the entry hash with a key held outside the database (AEGIS_LEDGER_SIGNING_KEY).
+    # Null for entries written before signing was enabled.
+    signature: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 class ModelRow(Base):
+    """The legacy one-pickle-per-tenant table. Kept only so old rows can be converted; nothing
+    reads a payload from it any more. See ModelVersionRow."""
+
     __tablename__ = "attrition_models"
 
     tenant_id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -117,9 +125,47 @@ class ModelRow(Base):
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+class ModelVersionRow(Base):
+    """One trained attrition model. Rows are never overwritten: a retrain adds a version, and
+    which one serves is the `active` flag. The payload is an .npz of plain numeric arrays (no
+    pickle) and the signature is an HMAC over it made with a key the database does not hold."""
+
+    __tablename__ = "attrition_model_versions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "version", name="uq_model_tenant_version"),
+        Index(
+            "uq_model_one_active",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("active"),
+            sqlite_where=text("active"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm: Mapped[str] = mapped_column(String(60), nullable=False)
+    rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    positives: Mapped[int] = mapped_column(Integer, nullable=False)
+    feature_importance: Mapped[dict[str, float]] = mapped_column(JSON, default=dict)
+    data_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    format: Mapped[str] = mapped_column(String(20), nullable=False, default="npz-v1")
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    signature: Mapped[str] = mapped_column(String(64), nullable=False)
+    gate: Mapped[str] = mapped_column(String(10), nullable=False)
+    fidelity: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 class ApiKeyRow(Base):
     __tablename__ = "api_keys"
-    __table_args__ = (Index("ix_api_keys_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("ix_api_keys_tenant", "tenant_id"),
+        Index("uq_api_keys_key_id", "key_id", unique=True),
+    )
 
     key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
@@ -128,6 +174,11 @@ class ApiKeyRow(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A surrogate id that tokens carry instead of anything derived from the key itself.
+    key_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()))
+    # Tokens issued from this key before this moment are refused, without revoking the key.
+    not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 class ScreeningRow(Base):
     """One screening verdict. Holds only the pseudonymous subject key, never the record."""
@@ -186,3 +237,72 @@ class RiskScoreRow(Base):
     needs_intervention: Mapped[bool] = mapped_column(Boolean, default=False)
     drivers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class RiskScoreHistoryRow(Base):
+    """Append-only: every score ever given, with the model version that gave it."""
+
+    __tablename__ = "attrition_score_history"
+    __table_args__ = (
+        Index("ix_score_history_subject", "tenant_id", "subject_key", "scored_at"),
+        Index("ix_score_history_tenant_time", "tenant_id", "scored_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    subject_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    probability: Mapped[float] = mapped_column(Float, nullable=False)
+    band: Mapped[str] = mapped_column(String(20), nullable=False)
+    needs_intervention: Mapped[bool] = mapped_column(Boolean, default=False)
+    drivers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    # The engineered feature values the model saw, kept so live drift can be measured later.
+    features: Mapped[dict[str, float]] = mapped_column(JSON, default=dict)
+    model_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class VerificationReportRow(Base):
+    """A stored verification result (determinism, drift or fidelity)."""
+
+    __tablename__ = "verification_reports"
+    __table_args__ = (Index("ix_verification_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(40), nullable=False)
+    report: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    ledger_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+class AlertRow(Base):
+    """An alert waiting for, or already given, delivery. Written first, delivered after, so a
+    mail server or webhook that is down delays an alert rather than losing it."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (Index("ix_alerts_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    dedupe_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+class CalendarSlotRow(Base):
+    """An interview slot that is booked. Per tenant: two tenants may share an attendee name."""
+
+    __tablename__ = "calendar_slots"
+    __table_args__ = (Index("ix_calendar_attendee", "tenant_id", "attendee", "starts_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    attendee: Mapped[str] = mapped_column(String(200), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_ref: Mapped[str] = mapped_column(String(100), nullable=False)

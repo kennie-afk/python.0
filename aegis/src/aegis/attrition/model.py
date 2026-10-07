@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import io
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -17,8 +20,12 @@ from aegis.attrition.features import (
     assert_no_protected_attributes,
     build_features,
 )
+from aegis.attrition.frozen import FrozenPipeline
 
 MINIMUM_TRAINING_ROWS = 40
+# How many training rows are kept as the model's reference distribution for drift checks.
+REFERENCE_ROWS = 2000
+FORMAT_VERSION = 1
 
 class ModelError(RuntimeError):
     pass
@@ -66,13 +73,35 @@ def _estimator(algorithm: str) -> object:
 class AttritionModel:
     def __init__(self, algorithm: str = "gradient_boosting") -> None:
         self._algorithm = algorithm
-        self._pipeline: Pipeline | None = None
+        self._frozen: FrozenPipeline | None = None
         self._baseline: np.ndarray | None = None
         self._importance: tuple[tuple[str, float], ...] = ()
+        self._reference: np.ndarray | None = None
+        self._data_hash = ""
 
     @property
     def is_trained(self) -> bool:
-        return self._pipeline is not None
+        return self._frozen is not None
+
+    @property
+    def data_hash(self) -> str:
+        """SHA-256 over the training matrix and outcomes: which data this model was fitted on."""
+        return self._data_hash
+
+    @property
+    def reference(self) -> np.ndarray:
+        """Up to REFERENCE_ROWS training rows, one column per feature, for drift checks."""
+        if self._reference is None:
+            raise ModelError("model must be trained before a reference is available")
+        return self._reference
+
+    def features_matrix(self, snapshots: Sequence[EmployeeSnapshot]) -> np.ndarray:
+        return self._matrix(snapshots)
+
+    def predict_matrix(self, matrix: np.ndarray) -> np.ndarray:
+        if self._frozen is None:
+            raise ModelError("model must be trained before scoring")
+        return self._frozen.predict_proba(matrix)
 
     @property
     def algorithm(self) -> str:
@@ -101,9 +130,15 @@ class AttritionModel:
         )
         pipeline.fit(matrix, np.asarray(left, dtype=int))
 
-        self._pipeline = pipeline
+        self._frozen = FrozenPipeline.from_sklearn(pipeline)
         self._baseline = matrix.mean(axis=0)
         self._importance = self._extract_importance(pipeline)
+        step = max(1, len(matrix) // REFERENCE_ROWS)
+        self._reference = matrix[::step][:REFERENCE_ROWS].copy()
+        digest = hashlib.sha256()
+        digest.update(np.ascontiguousarray(matrix).tobytes())
+        digest.update(np.asarray(left, dtype=np.int8).tobytes())
+        self._data_hash = digest.hexdigest()
 
         return TrainingReport(
             rows=len(snapshots),
@@ -113,12 +148,12 @@ class AttritionModel:
         )
 
     def score(self, snapshot: EmployeeSnapshot) -> AttritionScore:
-        if self._pipeline is None or self._baseline is None:
+        if self._frozen is None or self._baseline is None:
             raise ModelError("model must be trained before scoring")
 
         features = build_features(snapshot)
         vector = np.array([[features[name] for name in FEATURE_NAMES]], dtype=float)
-        probability = float(self._pipeline.predict_proba(vector)[0][1])
+        probability = float(self._frozen.predict_proba(vector)[0])
 
         return AttritionScore(
             subject_key=snapshot.subject_key,
@@ -129,6 +164,53 @@ class AttritionModel:
 
     def score_all(self, snapshots: Sequence[EmployeeSnapshot]) -> tuple[AttritionScore, ...]:
         return tuple(self.score(snapshot) for snapshot in snapshots)
+
+    def to_bytes(self) -> bytes:
+        """The trained model as an .npz of plain numeric arrays. No pickle is involved."""
+        if self._frozen is None or self._baseline is None or self._reference is None:
+            raise ModelError("model must be trained before it can be stored")
+        meta = {
+            "format": FORMAT_VERSION,
+            "algorithm": self._algorithm,
+            "features": list(FEATURE_NAMES),
+            "importance": [[name, weight] for name, weight in self._importance],
+            "data_hash": self._data_hash,
+        }
+        buffer = io.BytesIO()
+        np.savez(
+            buffer,
+            **{  # type: ignore[arg-type]
+                **{f"m_{k}": v for k, v in self._frozen.to_arrays().items()},
+                "baseline": self._baseline,
+                "reference": self._reference,
+                "meta": np.array(json.dumps(meta, sort_keys=True)),
+            },
+        )
+        return buffer.getvalue()
+
+    @classmethod
+    def from_bytes(cls, blob: bytes) -> AttritionModel:
+        try:
+            with np.load(io.BytesIO(blob), allow_pickle=False) as archive:
+                arrays = {name: archive[name] for name in archive.files}
+            meta = json.loads(str(arrays["meta"]))
+            if meta["format"] != FORMAT_VERSION:
+                raise ModelError(f"unsupported model format {meta['format']}")
+            if meta["features"] != list(FEATURE_NAMES):
+                raise ModelError("the stored model was trained on a different feature set")
+            model = cls(str(meta["algorithm"]))
+            model._frozen = FrozenPipeline.from_arrays(
+                {k[2:]: v for k, v in arrays.items() if k.startswith("m_")}
+            )
+            model._baseline = np.asarray(arrays["baseline"], dtype=float)
+            model._reference = np.asarray(arrays["reference"], dtype=float)
+            model._importance = tuple((str(n), float(w)) for n, w in meta["importance"])
+            model._data_hash = str(meta["data_hash"])
+        except ModelError:
+            raise
+        except Exception as error:  # a malformed blob is refused, never partly loaded
+            raise ModelError(f"stored model could not be read: {error}") from error
+        return model
 
     def feature_importance(self) -> tuple[tuple[str, float], ...]:
         if not self._importance:

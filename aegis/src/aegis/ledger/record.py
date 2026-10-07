@@ -5,7 +5,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from aegis.security.signing import constant_time_equal, sign
+
 GENESIS = "0" * 64
+
+def entry_signature(key: bytes, tenant_id: str, sequence: int, entry_hash: str) -> str:
+    """HMAC that binds an entry to a key the database does not hold. A plain SHA-256 chain can be
+    recomputed end to end by anyone who can write the table; this cannot."""
+    return sign(key, "aegis-ledger-entry", tenant_id, str(sequence), entry_hash)
+
+def head_signature(key: bytes, tenant_id: str, sequence: int, entry_hash: str) -> str:
+    """Attestation of the chain's head: how long it is and what it ends in."""
+    return sign(key, "aegis-ledger-head", tenant_id, str(sequence), entry_hash)
 
 @dataclass(frozen=True, slots=True)
 class LedgerEntry:
@@ -23,6 +34,7 @@ class LedgerEntry:
     recorded_at: datetime
     previous_hash: str
     entry_hash: str
+    signature: str | None = None
 
     @property
     def was_human_approved(self) -> bool:
@@ -34,6 +46,9 @@ class IntegrityReport:
     entries_checked: int
     broken_at: int | None = None
     reason: str | None = None
+    signed: int = 0
+    unsigned: int = 0
+    signatures_checked: bool = False
 
 def _canonical(
     sequence: int,
@@ -68,6 +83,7 @@ def make_entry(
     outcome: str,
     reasons: Sequence[str] = (),
     approver: str | None = None,
+    signing_key: bytes | None = None,
 ) -> LedgerEntry:
     recorded_at = datetime.now(UTC)
     reason_tuple = tuple(reasons)
@@ -90,6 +106,7 @@ def make_entry(
         recorded_at,
     )
 
+    entry_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return LedgerEntry(
         sequence=sequence,
         tenant_id=tenant_id,
@@ -104,12 +121,16 @@ def make_entry(
         approver=approver,
         recorded_at=recorded_at,
         previous_hash=previous_hash,
-        entry_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        entry_hash=entry_hash,
+        signature=entry_signature(signing_key, tenant_id, sequence, entry_hash)
+        if signing_key
+        else None,
     )
 
 class DecisionLedger:
-    def __init__(self) -> None:
+    def __init__(self, signing_key: bytes | None = None) -> None:
         self._entries: list[LedgerEntry] = []
+        self._signing_key = signing_key
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -148,12 +169,23 @@ class DecisionLedger:
             outcome=outcome,
             reasons=reasons,
             approver=approver,
+            signing_key=self._signing_key,
         )
         self._entries.append(entry)
         return entry
 
-    def verify(self) -> IntegrityReport:
+    def verify(
+        self, signing_key: bytes | None = None, require_signed: bool = False
+    ) -> IntegrityReport:
+        """Check hashes and links; with a key, also every signature.
+
+        Signatures are what stop a recomputed chain: with the key, an entry whose signature does
+        not match is a break, and so is an unsigned entry after a signed one (a stripped
+        signature). `require_signed` additionally refuses an unsigned prefix, for deployments
+        that have signed from the start."""
         expected_previous = GENESIS
+        signed = unsigned = 0
+        seen_signed = False
 
         for index, entry in enumerate(self._entries):
             if entry.sequence != index:
@@ -197,9 +229,47 @@ class DecisionLedger:
                     reason="entry content does not match its stored hash",
                 )
 
+            if entry.signature is not None:
+                signed += 1
+                seen_signed = True
+                if signing_key is not None and not constant_time_equal(
+                    entry_signature(signing_key, entry.tenant_id, entry.sequence, entry.entry_hash),
+                    entry.signature,
+                ):
+                    return IntegrityReport(
+                        intact=False,
+                        entries_checked=index,
+                        broken_at=entry.sequence,
+                        reason="signature does not verify: the entry or the chain was rewritten "
+                        "by someone without the signing key",
+                        signed=signed,
+                        unsigned=unsigned,
+                        signatures_checked=True,
+                    )
+            else:
+                unsigned += 1
+                if signing_key is not None and (seen_signed or require_signed):
+                    return IntegrityReport(
+                        intact=False,
+                        entries_checked=index,
+                        broken_at=entry.sequence,
+                        reason="entry is unsigned"
+                        + (" after signed entries (a signature was stripped)" if seen_signed
+                           else " but this deployment requires every entry to be signed"),
+                        signed=signed,
+                        unsigned=unsigned,
+                        signatures_checked=True,
+                    )
+
             expected_previous = entry.entry_hash
 
-        return IntegrityReport(intact=True, entries_checked=len(self._entries))
+        return IntegrityReport(
+            intact=True,
+            entries_checked=len(self._entries),
+            signed=signed,
+            unsigned=unsigned,
+            signatures_checked=signing_key is not None,
+        )
 
     def for_subject(self, subject_id: str) -> tuple[LedgerEntry, ...]:
         return tuple(entry for entry in self._entries if entry.subject_id == subject_id)

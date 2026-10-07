@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Protocol
 
 from aegis.agents.tools import ToolResult
 from aegis.governance.actions import ActionType, ProposedAction
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 class CalendarError(RuntimeError):
@@ -21,6 +25,11 @@ class Slot:
 
     def overlaps(self, other: Slot) -> bool:
         return self.starts_at < other.ends_at and other.starts_at < self.ends_at
+
+class Calendar(Protocol):
+    def availability(self, attendee: str) -> list[Slot]: ...
+
+    def book(self, attendees: list[str], slot: Slot) -> str: ...
 
 @dataclass
 class InMemoryCalendar:
@@ -43,8 +52,45 @@ class InMemoryCalendar:
 
         return f"evt-{int(slot.starts_at.timestamp())}-{len(attendees)}"
 
+class PersistentCalendar:
+    """Interview slots kept in the database, for one tenant. Two tenants can have an attendee of
+    the same name, so every lookup carries the tenant; a booking takes the tenant's advisory lock
+    so two requests cannot both take the same slot."""
+
+    def __init__(self, session: Session, tenant_id: str) -> None:
+        self._session = session
+        self._tenant = tenant_id
+
+    def availability(self, attendee: str) -> list[Slot]:
+        from aegis.persistence.repositories import CalendarRepository
+
+        return [
+            Slot(
+                row.starts_at if row.starts_at.tzinfo else row.starts_at.replace(tzinfo=UTC),
+                row.minutes,
+            )
+            for row in CalendarRepository(self._session).slots(self._tenant, attendee)
+        ]
+
+    def book(self, attendees: list[str], slot: Slot) -> str:
+        from aegis.persistence.repositories import CalendarRepository, LedgerRepository
+
+        LedgerRepository(self._session).lock_tenant(self._tenant)
+        for attendee in attendees:
+            for existing in self.availability(attendee):
+                if existing.overlaps(slot):
+                    raise CalendarError(
+                        f"{attendee} is already booked between "
+                        f"{existing.starts_at.isoformat()} and {existing.ends_at.isoformat()}"
+                    )
+        reference = f"evt-{int(slot.starts_at.timestamp())}-{len(attendees)}"
+        CalendarRepository(self._session).add(
+            self._tenant, attendees, slot.starts_at, slot.minutes, reference
+        )
+        return reference
+
 class CalendarTool:
-    def __init__(self, calendar: InMemoryCalendar, default_minutes: int = 45) -> None:
+    def __init__(self, calendar: Calendar, default_minutes: int = 45) -> None:
         self._calendar = calendar
         self._default_minutes = default_minutes
 

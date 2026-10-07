@@ -1,26 +1,40 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 import threading
 import time
+import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
-from sifa.core.errors import SifaError
-from sifa.registry.models import Stage
-from sifa.serving.auth import require_api_key
+from sifa.core.errors import NotFoundError, SifaError
+from sifa.serving.auth import Principal, Role, rate_limited, requires
 from sifa.serving.platform import Platform
+from sifa.serving.scheduler import Scheduler
 from sifa.simulation.world import World, build_world
+
+log = logging.getLogger("sifa.api")
 
 _platform: Platform | None = None
 _platform_lock = threading.Lock()
-# One benchmark at a time: each builds an index synchronously on a worker thread and pegs a core.
+_boot_thread: threading.Thread | None = None
+_boot_error: str | None = None
+_scheduler: Scheduler | None = None
+# One benchmark at a time: each builds an index on a worker thread and pegs a core.
+_jobs: dict[str, dict[str, Any]] = {}
+_jobs_lock = threading.Lock()
+MAX_JOBS = 20
 _benchmark_lock = threading.Lock()
 
 def _world_from_environment() -> World:
@@ -30,25 +44,72 @@ def _world_from_environment() -> World:
         seed=int(os.environ.get("SIFA_SEED", "101")),
     )
 
-def get_platform() -> Iterator[Platform]:
-    global _platform
-    if _platform is None:
-        with _platform_lock:
-            if _platform is None:
-                _platform = Platform(world=_world_from_environment())
-    yield _platform
+def _build_platform() -> Platform:
+    state = os.environ.get("SIFA_STATE_DIR", "./state").strip()
+    return Platform(
+        world=_world_from_environment(),
+        state_dir=Path(state) if state else None,
+        outcome_mode=os.environ.get("SIFA_OUTCOME_MODE", "simulated"),
+    )
 
-PlatformDep = Annotated[Platform, Depends(get_platform)]
-
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> Any:
-    platform = get_platform().__next__()
+def _warm(platform: Platform) -> None:
     warmup = int(os.environ.get("SIFA_DEMO_WARMUP", "0") or 0)
     if warmup > 0:
         from sifa.serving.demo import warm_up
 
         warm_up(platform, warmup)
+
+def _boot() -> None:
+    """Build in the background so /healthz answers at once and /readyz says when it is done."""
+    global _platform, _boot_error, _scheduler
+    try:
+        platform = _build_platform()
+        _warm(platform)
+        webhook = os.environ.get("SIFA_ALERT_WEBHOOK") or None
+        scheduler = Scheduler(
+            platform,
+            webhook=webhook,
+            interval=float(os.environ.get("SIFA_SCHEDULER_INTERVAL", "30")),
+            retrain_every=float(os.environ.get("SIFA_RETRAIN_EVERY_SECONDS", "0")),
+        )
+        scheduler.start()
+        _scheduler = scheduler
+        _platform = platform
+    except Exception as error:
+        log.exception("platform failed to start")
+        _boot_error = f"{type(error).__name__}: {error}"
+
+def get_platform() -> Iterator[Platform]:
+    global _platform
+    if _platform is None:
+        if _boot_error is not None:
+            raise HTTPException(status_code=503, detail=f"platform failed to start: {_boot_error}")
+        if _boot_thread is not None and _boot_thread.is_alive():
+            raise HTTPException(
+                status_code=503,
+                detail="the platform is still building its models",
+                headers={"Retry-After": "5"},
+            )
+        with _platform_lock:
+            if _platform is None:
+                _platform = _build_platform()
+    yield _platform
+
+PlatformDep = Annotated[Platform, Depends(get_platform)]
+Viewer = Annotated[Principal, Depends(requires(Role.VIEWER))]
+Operator = Annotated[Principal, Depends(requires(Role.OPERATOR))]
+Admin = Annotated[Principal, Depends(requires(Role.ADMIN))]
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> Any:
+    global _boot_thread
+    # A test that overrides get_platform supplies its own platform; do not build a second one.
+    if get_platform not in app.dependency_overrides and _platform is None:
+        _boot_thread = threading.Thread(target=_boot, name="sifa-boot", daemon=True)
+        _boot_thread.start()
     yield
+    if _scheduler is not None:
+        _scheduler.stop()
 
 app = FastAPI(
     title="Sifa",
@@ -69,7 +130,14 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type", "X-Api-Key"],
 )
 
-v1 = APIRouter(prefix="/v1", dependencies=[Depends(require_api_key)])
+v1 = APIRouter(prefix="/v1", dependencies=[Depends(requires(Role.VIEWER))])
+
+@app.exception_handler(NotFoundError)
+async def not_found_handler(_: object, error: NotFoundError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"code": "not-found", "detail": str(error)},
+    )
 
 @app.exception_handler(SifaError)
 async def sifa_error_handler(_: object, error: SifaError) -> JSONResponse:
@@ -80,7 +148,17 @@ async def sifa_error_handler(_: object, error: SifaError) -> JSONResponse:
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
+    """Liveness: the process is up and serving HTTP. Says nothing about the models."""
     return {"status": "ok"}
+
+@app.get("/readyz")
+def readyz() -> JSONResponse:
+    """Readiness: the models are built or restored. 503 while building (about 9 s cold)."""
+    if _platform is not None or get_platform in app.dependency_overrides:
+        return JSONResponse({"status": "ready"})
+    if _boot_error is not None:
+        return JSONResponse({"status": "failed", "detail": _boot_error}, status_code=503)
+    return JSONResponse({"status": "starting"}, status_code=503, headers={"Retry-After": "5"})
 
 @v1.get("/overview")
 def overview(platform: PlatformDep) -> dict[str, Any]:
@@ -115,12 +193,55 @@ def users(platform: PlatformDep, limit: int = Query(60, ge=1, le=240)) -> list[d
 def feed(user_id: str, platform: PlatformDep) -> dict[str, Any]:
     return platform.recommend(user_id)
 
-@v1.get("/retrieval/benchmark")
-def benchmark(
+class FeedbackIn(BaseModel):
+    request_id: str = Field(min_length=1, max_length=64)
+    item_id: str = Field(min_length=1, max_length=128)
+    clicked: bool
+
+@v1.post("/feedback")
+def feedback(
+    body: FeedbackIn, platform: PlatformDep, principal: Operator
+) -> dict[str, Any]:
+    """Report what a user did with an item from a served feed. Repeating a (request, item)
+    pair is harmless: it is stored once and counted once."""
+    outcome = platform.record_feedback(
+        body.request_id, body.item_id, body.clicked, actor=principal.actor
+    )
+    return {**outcome, "outcome_mode": platform.outcome_mode}
+
+@v1.post("/outcome-mode")
+def outcome_mode(
+    platform: PlatformDep, principal: Admin, mode: str = Query(pattern="^(simulated|feedback)$")
+) -> dict[str, Any]:
+    """Choose where experiment and guard outcomes come from. Resets counters and windows."""
+    platform.set_outcome_mode(mode)
+    return {"outcome_mode": platform.outcome_mode, "changed_by": principal.actor}
+
+@v1.get("/evaluation/movielens")
+def movielens_evaluation() -> dict[str, Any]:
+    """The last recorded offline evaluation on MovieLens, written by tools/movielens_eval.py."""
+    from importlib import resources
+
+    resource = resources.files("sifa.evaluation").joinpath("movielens_results.json")
+    if not resource.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No MovieLens evaluation has been recorded. Run tools/movielens_eval.py.",
+        )
+    return dict(json.loads(resource.read_text()))
+
+@v1.post(
+    "/retrieval/benchmark",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limited("benchmark"))],
+)
+def start_benchmark(
+    _: Operator,
     dimension: int = Query(48, ge=8, le=128),
     k: int = Query(10, ge=1, le=50),
     corpus: int = Query(2000, ge=1000, le=40000),
 ) -> dict[str, Any]:
+    """Start a benchmark job and return its id; poll GET /retrieval/benchmark/{job_id}."""
     from sifa.index.hnsw import HnswConfig, HnswIndex
 
     if not _benchmark_lock.acquire(blocking=False):
@@ -128,10 +249,42 @@ def benchmark(
             status_code=status.HTTP_409_CONFLICT,
             detail="A benchmark is already running. It builds an index from scratch; wait for it.",
         )
-    try:
-        return _run_benchmark(HnswConfig, HnswIndex, dimension, k, corpus)
-    finally:
-        _benchmark_lock.release()
+    job_id = uuid.uuid4().hex
+    job: dict[str, Any] = {
+        "job_id": job_id,
+        "status": "running",
+        "started_at": datetime.now(UTC).isoformat(),
+        "params": {"dimension": dimension, "k": k, "corpus": corpus},
+        "result": None,
+        "error": None,
+    }
+    with _jobs_lock:
+        _jobs[job_id] = job
+        while len(_jobs) > MAX_JOBS:
+            _jobs.pop(next(iter(_jobs)))
+
+    def work() -> None:
+        try:
+            job["result"] = _run_benchmark(HnswConfig, HnswIndex, dimension, k, corpus)
+            job["status"] = "done"
+        except Exception as error:
+            log.exception("benchmark failed")
+            job["error"] = f"{type(error).__name__}: {error}"
+            job["status"] = "failed"
+        finally:
+            job["finished_at"] = datetime.now(UTC).isoformat()
+            _benchmark_lock.release()
+
+    threading.Thread(target=work, name=f"benchmark-{job_id[:6]}", daemon=True).start()
+    return {"job_id": job_id, "status": "running", "poll": f"/v1/retrieval/benchmark/{job_id}"}
+
+@v1.get("/retrieval/benchmark/{job_id}")
+def benchmark_job(job_id: str) -> dict[str, Any]:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"no benchmark job {job_id}")
+    return dict(job)
 
 def _run_benchmark(
     hnsw_config: Any, hnsw_index: Any, dimension: int, k: int, corpus: int
@@ -246,47 +399,71 @@ def model(platform: PlatformDep) -> dict[str, Any]:
         },
     }
 
+def _version_json(version: Any, full: bool = False) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "label": version.label,
+        "version": version.version,
+        "stage": version.stage.value,
+        "traffic": version.traffic,
+        "metrics": version.metrics,
+        "created_at": version.created_at.isoformat(),
+        "history": [
+            {"at": at.isoformat(), "stage": stage.value, "reason": reason, "actor": actor}
+            for (at, stage, reason), actor in zip(version.history, version.actors, strict=True)
+        ],
+    }
+    if full:
+        body["card"] = version.card
+    return body
+
 @v1.get("/registry")
 def registry(platform: PlatformDep) -> list[dict[str, Any]]:
-    return [
-        {
-            "label": version.label,
-            "version": version.version,
-            "stage": version.stage.value,
-            "traffic": version.traffic,
-            "metrics": version.metrics,
-            "created_at": version.created_at.isoformat(),
-            "history": [
-                {"at": at.isoformat(), "stage": stage.value, "reason": reason}
-                for at, stage, reason in version.history
-            ],
-        }
-        for version in platform.registry.versions("ranker")
-    ]
+    return [_version_json(version) for version in platform.registry.versions("ranker")]
 
-@v1.post("/registry/promote")
-def promote(platform: PlatformDep) -> dict[str, Any]:
-    versions = platform.registry.versions("ranker")
-    candidate = platform.registry.register(
-        "ranker", platform.ranker, {"auc": platform.training.holdout_auc}
-    )
-    platform.registry.transition(
-        "ranker", candidate.version, Stage.SHADOW, "queued behind live traffic"
-    )
-    platform.registry.transition(
-        "ranker", candidate.version, Stage.CANARY, "shadow metrics acceptable"
-    )
+@v1.get("/registry/export")
+def registry_export(platform: PlatformDep, _: Operator) -> dict[str, Any]:
+    """The whole release record as one JSON document: versions with model cards and full
+    history, the alert log, and the feedback totals. For audits and for backups of the record."""
+    return {
+        "exported_at": datetime.now(UTC).isoformat(),
+        "schema_version": platform.store.schema_version,
+        "data_fingerprint": platform.fingerprint,
+        "outcome_mode": platform.outcome_mode,
+        "versions": [_version_json(v, full=True) for v in platform.registry.versions("ranker")],
+        "feedback": platform.store.feedback_summary(),
+        "alerts": platform.store.all_alerts(),
+    }
+
+@v1.get("/registry/{version}")
+def registry_version(version: int, platform: PlatformDep) -> dict[str, Any]:
+    try:
+        found = platform.registry.get("ranker", version)
+    except SifaError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return _version_json(found, full=True)
+
+@v1.post("/registry/promote", dependencies=[Depends(rate_limited("promote"))])
+def promote(platform: PlatformDep, principal: Admin) -> dict[str, Any]:
+    outcome = platform.promote_candidate(actor=principal.actor)
+    candidate = outcome["version"]
     return {
         "promoted": candidate.label,
         "stage": candidate.stage.value,
         "traffic": candidate.traffic,
-        "previous_versions": len(versions),
+        "auc": round(outcome["auc"], 4),
+        "previous_versions": candidate.version - 1,
     }
 
+@v1.post("/registry/advance")
+def advance(platform: PlatformDep, principal: Admin) -> dict[str, Any]:
+    promoted = platform.advance_canary(actor=principal.actor)
+    return {"now_live": promoted.label, "stage": promoted.stage.value}
+
 @v1.post("/registry/rollback")
-def rollback(platform: PlatformDep) -> dict[str, Any]:
-    rolled = platform.registry.rollback("ranker", "operator asked for a rollback")
-    live = platform.registry.live("ranker")
+def rollback(platform: PlatformDep, principal: Admin) -> dict[str, Any]:
+    rolled, live = platform.rollback(
+        f"rollback requested by {principal.actor}", actor=principal.actor
+    )
     return {
         "rolled_back": rolled.label,
         "now_live": live.label if live else None,
@@ -304,9 +481,30 @@ def drift(
             "p_value": round(report.p_value, 6),
             "severity": report.severity,
             "drifted": report.drifted,
+            # Not served traffic: the reference sample with a shift added by hand.
+            "source": "injected shift (demo)",
         }
         for report in platform.drift(shift)
     ]
+
+@v1.get("/drift/live")
+def drift_live(platform: PlatformDep) -> dict[str, Any]:
+    """Feature rows the ranker actually received while serving, against the training reference."""
+    result = platform.live_drift()
+    return {
+        **result,
+        "reports": [
+            {
+                "feature": report.feature,
+                "psi": round(report.psi, 4),
+                "ks_statistic": round(report.ks_statistic, 4),
+                "p_value": round(report.p_value, 6),
+                "severity": report.severity,
+                "drifted": report.drifted,
+            }
+            for report in result["reports"]
+        ],
+    }
 
 @v1.get("/experiment")
 def experiment(platform: PlatformDep) -> dict[str, Any]:
@@ -335,9 +533,9 @@ def experiment(platform: PlatformDep) -> dict[str, Any]:
         "samples": result.samples,
     }
 
-@v1.post("/simulate")
+@v1.post("/simulate", dependencies=[Depends(rate_limited("simulate"))])
 def simulate(
-    platform: PlatformDep, requests: int = Query(200, ge=1, le=2000)
+    platform: PlatformDep, _: Operator, requests: int = Query(200, ge=1, le=2000)
 ) -> dict[str, Any]:
     rng = np.random.default_rng()
     chosen = rng.choice(platform.world.users, size=requests, replace=True)

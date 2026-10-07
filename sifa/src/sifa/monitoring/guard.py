@@ -14,20 +14,48 @@ class GuardThresholds:
     max_latency_ms: float = 250.0
     minimum_samples: int = 300
 
+WINDOW_SIZE = 5000
+
 @dataclass(slots=True)
 class ServingWindow:
     impressions: int = 0
     clicks: int = 0
     latencies: deque[float] = field(default_factory=lambda: deque(maxlen=2000))
-    probabilities: list[float] = field(default_factory=list)
-    outcomes: list[int] = field(default_factory=list)
+    # Bounded so a long-lived window cannot grow for ever; counters above stay exact.
+    probabilities: deque[float] = field(default_factory=lambda: deque(maxlen=WINDOW_SIZE))
+    outcomes: deque[int] = field(default_factory=lambda: deque(maxlen=WINDOW_SIZE))
+    # request_id -> absolute sequence number, so a click that arrives later can be credited.
+    sequence: dict[str, int] = field(default_factory=dict)
 
-    def record(self, clicked: bool, probability: float, latency_ms: float) -> None:
+    def record(
+        self,
+        clicked: bool,
+        probability: float,
+        latency_ms: float,
+        request_id: str | None = None,
+    ) -> None:
+        if request_id is not None:
+            self.sequence[request_id] = self.impressions
+            if len(self.sequence) > 2 * WINDOW_SIZE:
+                horizon = self.impressions - WINDOW_SIZE
+                self.sequence = {k: v for k, v in self.sequence.items() if v >= horizon}
         self.impressions += 1
         self.clicks += int(clicked)
         self.latencies.append(latency_ms)
         self.probabilities.append(probability)
         self.outcomes.append(int(clicked))
+
+    def credit_click(self, request_id: str) -> bool:
+        """Mark an earlier impression clicked. False if it is not (or no longer) in the window."""
+        number = self.sequence.get(request_id)
+        if number is None:
+            return False
+        position = number - (self.impressions - len(self.outcomes))
+        if position < 0 or self.outcomes[position]:
+            return False
+        self.outcomes[position] = 1
+        self.clicks += 1
+        return True
 
     @property
     def ctr(self) -> float:
@@ -42,7 +70,7 @@ class ServingWindow:
 
     @property
     def calibration_error(self) -> float:
-        return expected_calibration_error(self.probabilities, self.outcomes)
+        return expected_calibration_error(list(self.probabilities), list(self.outcomes))
 
 @dataclass(frozen=True, slots=True)
 class GuardVerdict:
@@ -55,6 +83,10 @@ class GuardVerdict:
 class RolloutGuard:
     def __init__(self, thresholds: GuardThresholds | None = None) -> None:
         self._thresholds = thresholds or GuardThresholds()
+
+    @property
+    def thresholds(self) -> GuardThresholds:
+        return self._thresholds
 
     def assess(self, baseline: ServingWindow, candidate: ServingWindow) -> GuardVerdict:
         reasons: list[str] = []

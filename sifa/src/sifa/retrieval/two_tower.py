@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 
 import numpy as np
 
@@ -106,6 +107,27 @@ class TwoTowerModel:
             "users": float(len(users)),
             "items": float(len(items)),
         }
+
+    def to_arrays(self) -> dict[str, np.ndarray]:
+        if self._user_vectors is None or self._item_vectors is None:
+            raise NotTrainedError("the two tower model has not been trained")
+        return {
+            "user_vectors": self._user_vectors,
+            "item_vectors": self._item_vectors,
+            "user_keys": np.array(sorted(self._users, key=self._users.__getitem__)),
+            "item_keys": np.array(self._item_keys),
+            "config": np.array(json.dumps(asdict(self._config))),
+        }
+
+    @classmethod
+    def from_arrays(cls, arrays: dict[str, np.ndarray]) -> TwoTowerModel:
+        model = cls(TwoTowerConfig(**json.loads(str(arrays["config"]))))
+        model._user_vectors = np.asarray(arrays["user_vectors"], dtype=np.float32)
+        model._item_vectors = np.asarray(arrays["item_vectors"], dtype=np.float32)
+        model._users = {str(k): i for i, k in enumerate(arrays["user_keys"])}
+        model._item_keys = [str(k) for k in arrays["item_keys"]]
+        model._items = {k: i for i, k in enumerate(model._item_keys)}
+        return model
 
     def user_vector(self, user_id: str) -> np.ndarray:
         if self._user_vectors is None:
